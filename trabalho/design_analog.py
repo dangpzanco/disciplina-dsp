@@ -26,7 +26,7 @@ Amax = 1
 Amin = 42
 
 
-N, Wn = signal.buttord(2*np.pi*fp, 2*np.pi*fs, Amax, Amin, analog=True)
+N, Wn = signal.buttord(2*np.pi*fp*1.02, 2*np.pi*fs, Amax, Amin, analog=True)
 
 print(f'Amax = {Amax} dB, Amin = {Amin} dB')
 print(f'fp = {fp/1e3} kHz, fs = {fs/1e3} kHz')
@@ -46,7 +46,7 @@ plot_zpk(z, p, k, fp, fs, Amax, Amin)
 # plt.show()
 
 
-N, Wn = signal.ellipord(2*np.pi*fp, 2*np.pi*fs, Amax, Amin, analog=True)
+N, Wn = signal.ellipord(2*np.pi*fp*1.05, 2*np.pi*fs, Amax, Amin, analog=True)
 
 print(f'Amax = {Amax} dB, Amin = {Amin} dB')
 print(f'fp = {fp/1e3} kHz, fs = {fs/1e3} kHz')

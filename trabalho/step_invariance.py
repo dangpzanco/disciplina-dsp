@@ -43,7 +43,7 @@ print(f'fp = {fp/1e3} kHz, fs = {fs/1e3} kHz')
 print(f'Butterworth order = {N}')
 print(f'Wn = 2π * {Wn/2/np.pi:.3f}Hz')
 
-z, p, k = signal.butter(N, Wn, output='zpk', btype='low', analog=True)
+z, p, k = signal.butter(4, Wn, output='zpk', btype='low', analog=True)
 b, a = signal.zpk2tf(z, p, k)
 
 print(f'z = {z}')
@@ -53,14 +53,40 @@ print(f'b = {b}')
 print(f'a = {a}')
 
 
-zd, pd, kd, dt = signal.cont2discrete((z,p,k), 1/sample_rate, method='euler', alpha=None)
-bd, ad, dt = signal.cont2discrete((b,a), 1/sample_rate, method='euler', alpha=None)
 
-print(f'bd = {bd}')
-print(f'ad = {ad}')
+zd, pd, kd, dt = signal.cont2discrete((z,p,k), 1/sample_rate, method='zoh', alpha=None)
+
 print(f'zd = {zd}')
 print(f'pd = {pd}')
 print(f'kd = {kd}')
 
 plot_zpk(zd, pd, kd, fp, fs, Amax, Amin)
+
+tpoints = np.arange(100)/sample_rate
+
+ta, ya = signal.step((z,p,k), T=tpoints)
+td, yd = signal.dstep((zd,pd,kd,dt), t=tpoints)
+
+
+fig, ax1 = plt.subplots()
+ax1.set_title('Invariância ao degrau')
+
+ax1.plot(ta*sample_rate,ya,'b')
+ax1.plot(td*sample_rate,np.ravel(yd),'k.')
+ax1.set_ylabel('Amplitude', color='b')
+ax1.set_xlabel('Amostras')
+ax1.grid(True)
+ax1.legend(['Analógico', 'Discreto'])
+
+# ax2 = ax1.twinx()
+# ax2.plot(ta*sample_rate, np.abs(ya-np.ravel(yd)), 'r')
+# ax2.set_ylabel('Erro', color='r')
+# ax2.axis('tight')
+
+
+
 plt.show()
+
+
+
+
