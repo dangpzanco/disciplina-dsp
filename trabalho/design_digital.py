@@ -45,46 +45,6 @@ def plot_zpk(system, fp, fs, Amax, Amin, sample_rate=48e3, num_samples=1024, ax=
     ax.grid(True, which='both', axis='both')
     ax.axis(axis_focus)
 
-
-def plot_time(analog_system, discrete_system, response='step', num_samples=100, sample_rate=48e3, plot_error=False):
-
-    n = np.arange(num_samples)
-    t = n/sample_rate
-    fig, ax1 = plt.subplots()
-
-    if response == 'impulse':
-        ta, ya = signal.impulse2(analog_system, T=t)
-        _, yd = signal.dimpulse((*discrete_system,1/sample_rate), t=t)
-        ax1.set_title('Resposta ao impulso')
-
-    elif response == 'step':
-        ta, ya = signal.step2(analog_system, T=t)
-        _, yd = signal.dstep((*discrete_system,1/sample_rate), t=t)
-        ax1.set_title('Resposta ao degrau')
-
-    elif response == 'ramp':
-        ramp_factor = 1
-        ta = np.arange(int(num_samples*ramp_factor))/(ramp_factor*sample_rate)
-        print(ta.shape)
-        ta, ya, xa = signal.lsim2(analog_system, U=ta, T=ta, printmessg=True)
-
-        _, yd = signal.dlsim((*discrete_system,1/sample_rate), u=t, t=t, x0=None)
-        ax1.set_title('Resposta a rampa')
-
-
-    ax1.plot(ta*sample_rate,ya,'b')
-    ax1.plot(n,np.ravel(yd),'k.')
-    ax1.set_ylabel('Amplitude', color='b')
-    ax1.set_xlabel('Amostras')
-    ax1.grid(True)
-    ax1.legend(['Analógico', 'Discreto'])
-
-    if plot_error:
-        ax2 = ax1.twinx()
-        ax2.plot(n, np.abs(ya-np.ravel(yd)), 'r')
-        ax2.set_ylabel('Erro', color='r')
-        ax2.axis('tight')
-
 def matched_method(z, p, k, dt):
 
     zd = np.exp(z*dt)
@@ -92,6 +52,82 @@ def matched_method(z, p, k, dt):
     kd = k * np.abs(np.prod(1-pd)/np.prod(1-zd) * np.prod(z)/np.prod(p))
 
     return zd, pd, kd, dt
+
+def quantizer(x, Qformat):
+    """ 
+    Input:
+    x [array] - Input signal
+    m [int] - Integer bits
+    n [int] - Fractional bits
+    
+    e.g. Q16.16 -> 32bit fixed-point: m = 16, n = 16
+    reference: https://en.wikipedia.org/wiki/Q_(number_format)
+    
+    Output:
+    y - sinal quantizado
+    
+    butt, cheb1 -> m = 3
+    cheb2, ellip -> m = 2
+    """
+
+    m, n = Qformat
+
+    # Quantize signal
+    M = 2 ** n
+    y = np.round(x * M) / M
+
+    # Clip the signal
+    max_value = (1 - 1/M) * 2 ** (m - 1)
+    min_value = -2 ** (m - 1)
+    y = np.clip(y, min_value, max_value)
+
+    return y
+
+
+def biquad_quant(b, a, x, Qformat=(1,16)):
+    # SINGLE_BIQUAD_QUANT Filtro biquad forma direta I quantizado
+    #    Implementação de um estágio quantizado de filtragem IIR com biquadradas
+
+    num_samples = x.shape[0]
+    buffx = np.zeros(3)
+    buffy = np.zeros(2)
+    y = np.zeros(x.shape)
+
+    # Forma direta I
+    for i in range(num_samples):
+        
+        buffx[1:] = buffx[:1]
+        buffx[0] = x[i]
+        
+        valx = quantizer((b * buffx).sum(), Qformat)
+        valy = quantizer((a * buffy).sum(), Qformat)
+        
+        y[i] = quantizer(valx - valy, Qformat)
+        
+        buffy[1] = buffy[0]
+        buffy[0] = y[i]
+
+    return y
+
+def filtsos_quant(sos, x, Qformat):
+
+    y = x
+    for i in range(sos.shape[0]):
+        
+        b = quantizador(sos[i,:3], Qformat)
+        a = quantizador(sos[i,4:], Qformat)
+        y = biquad_quant(b, a, y, Qformat)
+
+
+def freqz_quant(sos, freq_vec=None, sample_rate=48e3, num_freqs=1000):
+
+    if freq_vec is None:
+        freq_vec = np.arange(num_freqs)/num_freqs * sample_rate/2
+
+
+
+    return f, h
+
 
 def get_filter(spec, filter_type='but', method='zoh'):
     
@@ -114,12 +150,9 @@ def get_filter(spec, filter_type='but', method='zoh'):
     return analog_system, discrete_system
 
 def check_limits(system, spec, num_samples=1000):
-    # fp, fs, Amax=1, Amin=42, sample_rate=48e3
 
     f1 = np.logspace(np.floor(np.log10(spec['fp']))-1, np.log10(spec['fp']), 2*num_samples)
     f2 = np.logspace(np.log10(spec['fs']), np.log10(spec['sample_rate']/2), num_samples)
-    # f1 = np.linspace(0, spec['fp'], 2*num_samples)
-    # f2 = np.linspace(spec['fs'], spec['sample_rate']/2, num_samples)
     f = np.hstack([f1, f2])
 
     f, h = signal.freqz_zpk(*system, fs=sample_rate, worN=f)
@@ -188,18 +221,19 @@ spec = dict(fp=fp, fs=fs, Amax=Amax, Amin=Amin, sample_rate=sample_rate, dt=1/sa
 
 
 
-analog_system, discrete_system, final_spec = optimize_filter(spec, filter_type='but', method='matched', num_samples=1000)
+analog_system, discrete_system, final_spec = optimize_filter(spec, filter_type='cau', method='matched', num_samples=1000)
 print(final_spec)
 
 print(discrete_system[-1])
 
 
-plot_zpk(discrete_system, fp, fs, Amax, Amin, plot_focus='all')
-plot_zpk(discrete_system, fp, fs, Amax, Amin, plot_focus='pass')
-plot_zpk(discrete_system, fp, fs, Amax, Amin, plot_focus='stop')
-# plot_time(analog_system, discrete_system, response='step', num_samples=100, sample_rate=sample_rate, plot_error=False)
-plt.show()
+# plot_zpk(discrete_system, fp, fs, Amax, Amin, plot_focus='all')
+# plot_zpk(discrete_system, fp, fs, Amax, Amin, plot_focus='pass')
+# plot_zpk(discrete_system, fp, fs, Amax, Amin, plot_focus='stop')
+# plt.show()
 
 
+sos = signal.zpk2sos(*discrete_system)
 
+print(sos, sos.shape)
 
