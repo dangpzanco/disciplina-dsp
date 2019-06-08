@@ -8,6 +8,7 @@ import warnings
 
 warnings.filterwarnings('ignore', '.*Ill-conditioned matrix.*')
 warnings.filterwarnings('ignore', '.*Badly conditioned filter coefficients.*')
+np.set_printoptions(linewidth=300, precision=4, floatmode='fixed', formatter={'float':lambda x: f'{x}'})
 
 rnd.seed(0)
 
@@ -53,7 +54,7 @@ def matched_method(z, p, k, dt):
 
     return zd, pd, kd, dt
 
-def quantizer(x, Qformat):
+def quantizer(x, Qformat, underflow_clip=False):
     """ 
     Input:
     x [array] - Input signal
@@ -72,13 +73,18 @@ def quantizer(x, Qformat):
 
     m, n = Qformat
 
+    if underflow_clip:
+        x_min = 2 ** -(n - 1)
+        x[np.abs(x) < x_min] = x_min
+
     # Quantize signal
     M = 2 ** n
     y = np.round(x * M) / M
 
     # Clip the signal
-    max_value = (1 - 1/M) * 2 ** (m - 1)
-    min_value = -2 ** (m - 1)
+    x_max = 2 ** (m - 1)
+    max_value = (1 - 1/M) * x_max
+    min_value = -x_max
     y = np.clip(y, min_value, max_value)
 
     return y
@@ -109,14 +115,48 @@ def biquad_quant(b, a, x, Qformat=(1,16)):
 
     return y
 
+
+def biquad_quant2(b, a, x, Qformat=(1,16)):
+    # SINGLE_BIQUAD_QUANT Filtro biquad forma direta I quantizado
+    #    Implementação de um estágio quantizado de filtragem IIR com biquadradas
+
+    num_samples = x.shape[0]
+    y = np.zeros(x.shape)
+    # w = np.zeros([x.shape[0] + 2, x.shape[1:]])
+    buff = np.zeros(3)
+
+
+    # Forma direta I
+    for i in range(num_samples):
+        
+        buff[1:] = buff[:1]
+        buff[0] = x[i] - quantizer((a * buff[1:]).sum(), Qformat)
+        y[i] = quantizer((b * buff).sum(), Qformat)
+        
+
+    return y
+
+def sos2sos_quant(sos, Qformat):
+    non_zeros = sos[0,:3] > 0
+    b_factor = np.prod(sos[0,:3][non_zeros]) ** (1/non_zeros.sum())
+    sos[0,:3] /= b_factor
+    sos[:,:3] *= b_factor ** (1/sos.shape[0])
+
+    sos = quantizer(sos, Qformat)
+
+    return sos
+
+
 def filtsos_quant(sos, x, Qformat):
 
     y = x
     for i in range(sos.shape[0]):
         
-        b = quantizador(sos[i,:3], Qformat)
-        a = quantizador(sos[i,4:], Qformat)
+        b = quantizer(sos[i,:3], Qformat)
+        a = quantizer(sos[i,4:], Qformat)
         y = biquad_quant(b, a, y, Qformat)
+
+    return y
 
 
 def freqz_quant(sos, freq_vec=None, sample_rate=48e3, num_freqs=1000):
@@ -221,19 +261,34 @@ spec = dict(fp=fp, fs=fs, Amax=Amax, Amin=Amin, sample_rate=sample_rate, dt=1/sa
 
 
 
-analog_system, discrete_system, final_spec = optimize_filter(spec, filter_type='cau', method='matched', num_samples=1000)
+analog_system, discrete_system, final_spec = optimize_filter(spec, filter_type='cau', method='bilinear', num_samples=1000)
 print(final_spec)
 
 print(discrete_system[-1])
 
+# pair_mode = 'keep_odd'
+pair_mode = 'nearest'
+sos = signal.zpk2sos(*discrete_system, pairing=pair_mode)
+print(f'Biquads of shape {sos.shape}:\n', sos)
 
-# plot_zpk(discrete_system, fp, fs, Amax, Amin, plot_focus='all')
-# plot_zpk(discrete_system, fp, fs, Amax, Amin, plot_focus='pass')
-# plot_zpk(discrete_system, fp, fs, Amax, Amin, plot_focus='stop')
-# plt.show()
+non_zeros = sos[0,:3] > 0
+b_factor = np.prod(sos[0,:3][non_zeros]) ** (1/non_zeros.sum())
+# print(sos[:,:3]/b_factor)
+# sos[:,:3] = sos[:,:3] * b_factor ** (1/sos.shape[0])
+sos[0,:3] /= b_factor
+sos[:,:3] *= b_factor ** (1/sos.shape[0])
+
+sos = quantizer(sos, (2,14), underflow_clip=False)
+
+print('Quantized biquads:\n', sos)
+print('B Factor:\n', b_factor, b_factor ** (1/sos.shape[0]))
+
+discrete_system = signal.sos2zpk(sos)
+
+plot_zpk(discrete_system, fp, fs, Amax, Amin, plot_focus='all')
+plot_zpk(discrete_system, fp, fs, Amax, Amin, plot_focus='pass')
+plot_zpk(discrete_system, fp, fs, Amax, Amin, plot_focus='stop')
+plt.show()
 
 
-sos = signal.zpk2sos(*discrete_system)
-
-print(sos, sos.shape)
 
