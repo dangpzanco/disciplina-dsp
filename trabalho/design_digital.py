@@ -12,12 +12,12 @@ np.set_printoptions(linewidth=300, precision=4, floatmode='fixed', formatter={'f
 
 rnd.seed(0)
 
-def plot_zpk(system, fp, fs, Amax, Amin, sample_rate=48e3, num_samples=1024, ax=None, plot_focus='all'):
+def plot_zpk(system, fp, fs, Amax, Amin, sample_rate=48e3, num_freqs=1024, ax=None, plot_focus='all'):
 
     fmin = np.floor(np.log10(fp))-1
     fmax = np.ceil(np.log10(fs))
 
-    f = np.logspace(fmin, fmax, num_samples)
+    f = np.logspace(fmin, fmax, num_freqs)
     f, h = signal.freqz_zpk(*system, fs=sample_rate, worN=f)
 
     if ax is None:
@@ -46,6 +46,44 @@ def plot_zpk(system, fp, fs, Amax, Amin, sample_rate=48e3, num_samples=1024, ax=
     ax.grid(True, which='both', axis='both')
     ax.axis(axis_focus)
 
+
+def plot_digital(sos, Qformat, fp, fs, Amax, Amin, sample_rate=48e3, num_freqs=256, ax=None, plot_focus='all'):
+
+    fmin = np.floor(np.log10(fp))-1
+    fmax = np.ceil(np.log10(fs))
+
+    f = np.logspace(fmin, fmax, num_freqs)
+    f, h = freqz_quant(sos, Qformat, freq_vec=f, sample_rate=sample_rate, num_freqs=num_freqs, num_samples=256)
+
+    # f, h = signal.sosfreqz(sos, fs=sample_rate, worN=f)
+
+    if ax is None:
+        fig, ax = plt.subplots()
+    
+    if plot_focus == 'all':
+        axis_focus = [1e2, 10**fmax, -50, 1]
+        ax.set_xscale('log')
+    elif plot_focus == 'pass':
+        axis_focus = [1000, 2500, -5, 0]
+    elif plot_focus == 'stop':
+        axis_focus = [3000, 5000, -50, -35]
+
+    # Plot data
+    ax.plot(f, 20 * np.log10(np.abs(h)), linewidth=2)
+
+    # Plot boxes
+    box_style = dict(linewidth=2, linestyle='--', edgecolor='k', facecolor='0.9')
+    ax.fill([10**fmin, 10**fmin,  fp,  fp], [-Amin*2, -Amax, -Amax, -Amin*2], **box_style) # pass
+    ax.fill([fs, fs,  10**fmax,  10**fmax], [-Amin, Amax, Amax, -Amin], **box_style) # stop
+
+    # Set plot properties
+    ax.set_title('Lowpass filter')
+    ax.set_xlabel('Frequency [Hz]')
+    ax.set_ylabel('Amplitude [dB]')
+    ax.grid(True, which='both', axis='both')
+    ax.axis(axis_focus)
+
+
 def matched_method(z, p, k, dt):
 
     zd = np.exp(z*dt)
@@ -54,7 +92,7 @@ def matched_method(z, p, k, dt):
 
     return zd, pd, kd, dt
 
-def quantizer(x, Qformat, underflow_clip=False):
+def quantizer(x, Qformat):
     """ 
     Input:
     x [array] - Input signal
@@ -73,10 +111,6 @@ def quantizer(x, Qformat, underflow_clip=False):
 
     m, n = Qformat
 
-    if underflow_clip:
-        x_min = 2 ** -(n - 1)
-        x[np.abs(x) < x_min] = x_min
-
     # Quantize signal
     M = 2 ** n
     y = np.round(x * M) / M
@@ -87,7 +121,8 @@ def quantizer(x, Qformat, underflow_clip=False):
     min_value = -x_max
     y = np.clip(y, min_value, max_value)
 
-    return y
+    # return y
+    return x
 
 
 def biquad_quant(b, a, x, Qformat=(1,16)):
@@ -95,9 +130,9 @@ def biquad_quant(b, a, x, Qformat=(1,16)):
     #    Implementação de um estágio quantizado de filtragem IIR com biquadradas
 
     num_samples = x.shape[0]
-    buffx = np.zeros(3)
-    buffy = np.zeros(2)
-    y = np.zeros(x.shape)
+    buffx = np.zeros(3, dtype=x.dtype)
+    buffy = np.zeros(2, dtype=x.dtype)
+    y = np.zeros(x.shape, dtype=x.dtype)
 
     # Forma direta I
     for i in range(num_samples):
@@ -121,17 +156,16 @@ def biquad_quant2(b, a, x, Qformat=(1,16)):
     #    Implementação de um estágio quantizado de filtragem IIR com biquadradas
 
     num_samples = x.shape[0]
-    y = np.zeros(x.shape)
+    y = np.zeros(x.shape, dtype=x.dtype)
     # w = np.zeros([x.shape[0] + 2, x.shape[1:]])
-    buff = np.zeros(3)
-
+    buff = np.zeros(3, dtype=x.dtype)
 
     # Forma direta I
     for i in range(num_samples):
         
         buff[1:] = buff[:1]
-        buff[0] = x[i] - quantizer((a * buff[1:]).sum(), Qformat)
-        y[i] = quantizer((b * buff).sum(), Qformat)
+        buff[0] = x[i,] - quantizer((a * buff[1:]).sum(), Qformat)
+        y[i,] = quantizer((b * buff).sum(), Qformat)
         
 
     return y
@@ -154,17 +188,43 @@ def filtsos_quant(sos, x, Qformat):
         
         b = quantizer(sos[i,:3], Qformat)
         a = quantizer(sos[i,4:], Qformat)
-        y = biquad_quant(b, a, y, Qformat)
+        y = biquad_quant2(b, a, y, Qformat)
 
     return y
 
 
-def freqz_quant(sos, freq_vec=None, sample_rate=48e3, num_freqs=1000):
+def freqz_quant(sos, Qformat, freq_vec=None, sample_rate=48e3, num_freqs=256, num_samples=1024):
 
     if freq_vec is None:
         freq_vec = np.arange(num_freqs)/num_freqs * sample_rate/2
 
+    f = freq_vec.copy()
 
+    time_vec = np.arange(num_samples).reshape(1,-1)
+    freq_vec = freq_vec.ravel().reshape(-1,1)/sample_rate
+    
+    x = np.exp(-1j * 2 * np.pi * freq_vec * time_vec)
+    cosx = np.cos(2 * np.pi * freq_vec * time_vec)
+    sinx = np.sin(2 * np.pi * freq_vec * time_vec)
+
+    y = np.empty(x.shape, dtype=np.complex)
+    for i in range(num_freqs):
+        y[i,] = filtsos_quant(sos, cosx[i,], Qformat) + 1j * filtsos_quant(sos, sinx[i,], Qformat)
+        # y[i,] = filtsos_quant(sos, x[i,], Qformat)
+
+    # y = signal.sosfilt(sos, x, axis=-1)
+
+    h = (x * y.conjugate()).mean(axis=-1)
+    # h = (cosx * y + 1j * sinx * y).mean(axis=-1)
+
+    print(list(h))
+
+    # plt.figure()
+    # plt.plot(x[-10,:].imag)
+    # plt.plot(y[-10,:].imag)
+    # plt.show()
+
+    # exit(0)
 
     return f, h
 
@@ -261,7 +321,7 @@ spec = dict(fp=fp, fs=fs, Amax=Amax, Amin=Amin, sample_rate=sample_rate, dt=1/sa
 
 
 
-analog_system, discrete_system, final_spec = optimize_filter(spec, filter_type='cau', method='bilinear', num_samples=1000)
+analog_system, discrete_system, final_spec = optimize_filter(spec, filter_type='cau', method='zoh', num_samples=1000)
 print(final_spec)
 
 print(discrete_system[-1])
@@ -278,7 +338,8 @@ b_factor = np.prod(sos[0,:3][non_zeros]) ** (1/non_zeros.sum())
 sos[0,:3] /= b_factor
 sos[:,:3] *= b_factor ** (1/sos.shape[0])
 
-sos = quantizer(sos, (2,14), underflow_clip=False)
+Qformat = (2,14)
+# sos = quantizer(sos, Qformat, underflow_clip=False)
 
 print('Quantized biquads:\n', sos)
 print('B Factor:\n', b_factor, b_factor ** (1/sos.shape[0]))
@@ -286,8 +347,19 @@ print('B Factor:\n', b_factor, b_factor ** (1/sos.shape[0]))
 discrete_system = signal.sos2zpk(sos)
 
 plot_zpk(discrete_system, fp, fs, Amax, Amin, plot_focus='all')
-plot_zpk(discrete_system, fp, fs, Amax, Amin, plot_focus='pass')
-plot_zpk(discrete_system, fp, fs, Amax, Amin, plot_focus='stop')
+# plot_zpk(discrete_system, fp, fs, Amax, Amin, plot_focus='pass')
+# plot_zpk(discrete_system, fp, fs, Amax, Amin, plot_focus='stop')
+# plt.show()
+
+
+
+# f, h = freqz_quant(sos, (2,14))
+
+
+# plt.plot(f, np.abs(h))
+Qformat = (2,14)
+Qformat = (8,32)
+plot_digital(sos, Qformat, fp, fs, Amax, Amin, sample_rate=48e3, num_freqs=1024, ax=None, plot_focus='all')
 plt.show()
 
 
