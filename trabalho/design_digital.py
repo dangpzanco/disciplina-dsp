@@ -398,8 +398,8 @@ spec = dict(fp=fp, fs=fs, Amax=Amax, Amin=Amin, sample_rate=sample_rate, dt=1/sa
 
 
 
-# analog_system, discrete_system, final_spec = optimize_filter(spec, filter_type='cau', method='bilinear', num_samples=1000)
-analog_system, discrete_system, final_spec = optimize_filter_quant(spec, filter_type='cau', method='bilinear', limits_samples=100)
+analog_system, discrete_system, final_spec = optimize_filter(spec, filter_type='cau', method='bilinear', num_samples=1000)
+# analog_system, discrete_system, final_spec = optimize_filter_quant(spec, filter_type='cau', method='bilinear', limits_samples=100)
 print(final_spec)
 
 print(discrete_system[-1])
