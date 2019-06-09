@@ -122,7 +122,7 @@ def check_limits(system, spec, num_samples=1000):
     # f2 = np.linspace(spec['fs'], spec['sample_rate']/2, num_samples)
     f = np.hstack([f1, f2])
 
-    f, h = signal.freqz_zpk(*system, fs=sample_rate, worN=f)
+    f, h = signal.freqz_zpk(*system, fs=spec['sample_rate'], worN=f)
     Hdb = 20 * np.log10(np.abs(h))
 
     pass_band = Hdb[f <= spec['fp']]
