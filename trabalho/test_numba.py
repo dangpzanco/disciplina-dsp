@@ -6,7 +6,7 @@ from numba import jit, njit
 from numba.types import float64, int64
 import numpy as np
 
-# @jit(float64[:](float64[:], int64, float64[:]),nopython=True)
+# source: https://github.com/numba/numba/issues/2648
 @jit(nopython=True)
 def rnd1(x, decimals, out):
     return np.round_(x, decimals, out)
