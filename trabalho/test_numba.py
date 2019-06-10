@@ -11,8 +11,6 @@ warnings.filterwarnings('ignore', '.*Ill-conditioned matrix.*')
 warnings.filterwarnings('ignore', '.*Badly conditioned filter coefficients.*')
 np.set_printoptions(linewidth=300, precision=4, floatmode='fixed', formatter={'float':lambda x: f'{x}'})
 
-rnd.seed(0)
-# rnd.seed(10)
 
 def plot_zpk(system, fp, fs, Amax, Amin, sample_rate=48e3, num_freqs=1024, ax=None, plot_focus='all'):
 
@@ -49,13 +47,14 @@ def plot_zpk(system, fp, fs, Amax, Amin, sample_rate=48e3, num_freqs=1024, ax=No
     ax.axis(axis_focus)
 
 
-def plot_digital(sos, Qformat, fp, fs, Amax, Amin, sample_rate=48e3, num_freqs=256, num_samples=1000, ax=None, plot_focus='all'):
+def plot_digital(sos, Qformat, fp, fs, Amax, Amin, magnitude=0.5, sample_rate=48e3, num_freqs=256, num_samples=1000, ax=None, plot_focus='all'):
 
     fmin = np.floor(np.log10(fp))-1
     fmax = np.ceil(np.log10(fs))
 
     f = np.logspace(fmin, fmax, num_freqs)
-    f, h = freqz_quant(sos, Qformat, freq_vec=f, sample_rate=sample_rate, num_freqs=num_freqs, num_samples=num_samples)
+    f, h = freqz_quant(sos, Qformat, magnitude=magnitude, 
+        freq_vec=f, sample_rate=sample_rate, num_samples=num_samples)
 
     # f, h = signal.sosfreqz(sos, fs=sample_rate, worN=f)
 
@@ -88,7 +87,7 @@ def plot_digital(sos, Qformat, fp, fs, Amax, Amin, sample_rate=48e3, num_freqs=2
     return f, 20 * np.log10(np.abs(h))
 
 
-def freqz_quant(sos, Qformat, freq_vec=None, sample_rate=48e3, num_freqs=256, num_samples=1000):
+def freqz_quant(sos, Qformat, magnitude=0.5, freq_vec=None, sample_rate=48e3, num_freqs=256, num_samples=1000):
 
     if freq_vec is None:
         freq_vec = np.arange(num_freqs)/num_freqs * sample_rate/2
@@ -100,31 +99,28 @@ def freqz_quant(sos, Qformat, freq_vec=None, sample_rate=48e3, num_freqs=256, nu
     freq_vec = freq_vec.ravel().reshape(1,-1)/sample_rate
     
     # Avoid clipping with mag < 1.0
-    mag = 0.5
+    # mag = 0.75
 
     # Make complex sinusoids matrix (num_samples, num_freqs)
-    x = mag * np.exp(1j * 2 * np.pi * freq_vec * time_vec)
-    # cosx = x.real
-    # sinx = x.imag
+    x = magnitude * np.exp(1j * 2 * np.pi * freq_vec * time_vec)
+    cosx = x.real
+    sinx = x.imag
 
     # Filter for each frequency
     m, n = Qformat
     y = np.empty(x.shape, dtype=np.complex)
     for i in range(num_freqs):
         y[:,i] = filtsos_quant(sos, x[:,i], m, n)
-        # y[i,] = filtsos_quant(sos, cosx[i,], m, n) + 1j * filtsos_quant(sos, sinx[i,], m, n)
 
     # y = filtsos_quant(sos, x, Qformat)
-    # y = np.apply_along_axis(lambda vec: filtsos_quant(sos,vec,Qformat), 0, x)
 
     # y = signal.sosfilt(sos, x, axis=0)
     # y = signal.sosfilt(sos, cosx, axis=0) + 1j * signal.sosfilt(sos, sinx, axis=0)
 
-    h = (x * y.conjugate()).mean(axis=0) / mag**2
+    h = (x * y.conjugate()).mean(axis=0) / magnitude**2
     # h = (cosx * y + 1j * sinx * y).mean(axis=-1)
 
     return f, h
-
 
 def get_filter(spec, filter_type='but', method='zoh'):
     
@@ -134,6 +130,12 @@ def get_filter(spec, filter_type='but', method='zoh'):
     elif filter_type.lower() in ('cauer' + 'elliptic'):
         N, Wn = signal.ellipord(2*np.pi*fp, 2*np.pi*spec['fs'], spec['Amax'], spec['Amin'], analog=True)
         z, p, k = signal.ellip(N, spec['Amax'], spec['Amin'], Wn, output='zpk', btype='low', analog=True)
+
+    def matched_method(z, p, k, dt):
+        zd = np.exp(z*dt)
+        pd = np.exp(p*dt)
+        kd = k * np.abs(np.prod(1-pd)/np.prod(1-zd) * np.prod(z)/np.prod(p))
+        return zd, pd, kd, dt
 
     if method == 'matched':
         zd, pd, kd, dt = matched_method(z, p, k, spec['dt'])
@@ -146,25 +148,7 @@ def get_filter(spec, filter_type='but', method='zoh'):
 
     return analog_system, discrete_system
 
-def check_limits(system, spec, num_samples=1000):
-
-    f1 = np.logspace(np.floor(np.log10(spec['fp']))-1, np.log10(spec['fp']), 2*num_samples)
-    f2 = np.logspace(np.log10(spec['fs']), np.log10(spec['sample_rate']/2), num_samples)
-    f = np.hstack([f1, f2])
-
-    f, h = signal.freqz_zpk(*system, fs=spec['sample_rate'], worN=f)
-    Hdb = 20 * np.log10(np.abs(h))
-
-    pass_band = Hdb[f <= spec['fp']]
-    pass_band_faults = (pass_band < -spec['Amax']).sum() + (pass_band > 0).sum()
-    stop_band_faults = (Hdb[f >= spec['fs']] > -spec['Amin']).sum()
-
-    total_faults = pass_band_faults + stop_band_faults + system[1].size
-
-    return total_faults
-
-
-def check_limits_quant(system, spec, Qformat, num_freqs=1000, num_samples=1000):
+def check_limits_quant(system, spec, Qformat, magnitude=0.5, num_freqs=1000, num_samples=1000):
 
     f1 = np.logspace(np.floor(np.log10(spec['fp']))-1, np.log10(spec['fp']), 2*num_samples)
     f2 = np.logspace(np.log10(spec['fs']), np.log10(spec['sample_rate']/2), num_samples)
@@ -175,8 +159,9 @@ def check_limits_quant(system, spec, Qformat, num_freqs=1000, num_samples=1000):
     # f = np.logspace(fmin, fmax, num_freqs)
 
     # f, h = signal.freqz_zpk(*system, fs=spec['sample_rate'], worN=f)
-    sos = zpk2sos_quant(system, Qformat)
-    f, h = freqz_quant(sos, Qformat, freq_vec=f, sample_rate=spec['sample_rate'], num_samples=num_samples)
+    _, sos = zpk2sos_quant(system, Qformat)
+    f, h = freqz_quant(sos, Qformat, magnitude=magnitude,
+        freq_vec=f, sample_rate=spec['sample_rate'], num_samples=num_samples)
     Hdb = 20 * np.log10(np.abs(h))
 
     pass_band = Hdb[f <= spec['fp']]
@@ -186,23 +171,20 @@ def check_limits_quant(system, spec, Qformat, num_freqs=1000, num_samples=1000):
 
     total_faults = pass_band_faults + stop_band_faults + system[1].size
 
-    print(pass_band_faults, stop_band_faults, system[1].size)
+    # print(pass_band_faults, stop_band_faults, system[1].size)
 
-    plot_digital(sos, Qformat, spec['fp'], spec['fs'], spec['Amax'], spec['Amin'], 
-                 sample_rate=48e3, num_freqs=num_freqs, num_samples=num_samples, ax=None, plot_focus='all')
-    plt.show()
+    # plot_digital(sos, Qformat, spec['fp'], spec['fs'], spec['Amax'], spec['Amin'], 
+    #              sample_rate=48e3, num_freqs=num_freqs, num_samples=num_samples, ax=None, plot_focus='all')
+    # plt.show()
 
     return total_faults
 
-
-def optimize_filter(spec, filter_type='but', min_order=None, method='zoh', num_samples=1000, limits_samples=1000):
-    # fp, fs, Amax, Amin, sample_rate
+def optimize_filter_quant(spec, Qformat=(2,14), magnitude=0.5, filter_type='but', min_order=None, method='zoh', num_iters=50, limits_samples=1000):
     original_spec = spec.copy()
-    # Amax_vec = np.linspace(spec['Amax'], 1e-3, num_samples)
-    # Amin_vec = np.linspace(spec['Amin'], 2*spec['Amin'], num_samples)
-    Amax_vec = rnd.uniform(1e-3, spec['Amax'], num_samples)
-    Amin_vec = rnd.uniform(spec['Amin'], 2*spec['Amin'], num_samples)
-    Avec = np.vstack([Amax_vec, Amin_vec])
+
+    Amax_vec = rnd.uniform(0.1, spec['Amax'], num_iters)
+    Amin_vec = rnd.uniform(spec['Amin'], 1.5*spec['Amin'], num_iters)
+    spec_vec = np.vstack([Amax_vec, Amin_vec])
 
     if min_order is None:
         if filter_type.lower() in ('butterworth'):
@@ -211,15 +193,19 @@ def optimize_filter(spec, filter_type='but', min_order=None, method='zoh', num_s
             min_order = 4
 
     faults = np.inf
-    for i in range(num_samples):
-        spec['Amax'] = Avec[0,i]
-        spec['Amin'] = Avec[1,i]
+    for i in range(num_iters):
+        spec['Amax'] = spec_vec[0,i]
+        spec['Amin'] = spec_vec[1,i]
         asys, dsys = get_filter(spec, filter_type=filter_type, method=method)
-        total_faults = check_limits(dsys, original_spec, num_samples=limits_samples)
+        total_faults = check_limits_quant(dsys, original_spec, Qformat, 
+            magnitude=magnitude, num_freqs=limits_samples, num_samples=1000)
         total_faults -= min_order
 
         filter_order = dsys[1].size
-        print(total_faults, filter_order)
+        print(f"Amax: {spec['Amax']:.3f} dB |",
+            f"Amin: {spec['Amin']:.3f} dB |",
+            f"Mag. faults: {total_faults:3} of {limits_samples} |",
+            f"Filter order: {filter_order}")
 
         if faults > total_faults:
             faults = total_faults
@@ -228,57 +214,11 @@ def optimize_filter(spec, filter_type='but', min_order=None, method='zoh', num_s
         if faults <= 0:
             analog_system, discrete_system = (asys, dsys)
             return analog_system, discrete_system, spec
-    
-    print(faults, discrete_system[1].size)
-
-    return analog_system, discrete_system, spec
-
-def optimize_filter_quant(spec, Qformat=(2,14), filter_type='but', min_order=None, method='zoh', num_samples=1000, limits_samples=1000):
-    # fp, fs, Amax, Amin, sample_rate
-    original_spec = spec.copy()
-    # Amax_vec = np.linspace(spec['Amax'], 1e-3, num_samples)
-    # Amin_vec = np.linspace(spec['Amin'], 2*spec['Amin'], num_samples)
-    Amax_vec = rnd.uniform(1e-3, spec['Amax'], num_samples)
-    Amin_vec = rnd.uniform(spec['Amin'], 2*spec['Amin'], num_samples)
-    Avec = np.vstack([Amax_vec, Amin_vec])
-
-    if min_order is None:
-        if filter_type.lower() in ('butterworth'):
-            min_order = 9+1
-        elif filter_type.lower() in ('cauer' + 'elliptic'):
-            min_order = 4+1
-
-    faults = np.inf
-    for i in range(num_samples):
-        spec['Amax'] = Avec[0,i]
-        spec['Amin'] = Avec[1,i]
-        asys, dsys = get_filter(spec, filter_type=filter_type, method=method)
-        total_faults = check_limits_quant(dsys, original_spec, Qformat, num_freqs=limits_samples, num_samples=1000)
-        total_faults -= min_order
-
-        filter_order = dsys[1].size
-        print(total_faults, filter_order)
-
-        if faults > total_faults:
-            faults = total_faults
-            analog_system, discrete_system = (asys, dsys)
-        
-        if faults <= 0:
-            analog_system, discrete_system = (asys, dsys)
-            return analog_system, discrete_system, spec
-    
-    print(faults, discrete_system[1].size)
 
     return analog_system, discrete_system, spec
 
 
-def matched_method(z, p, k, dt):
 
-    zd = np.exp(z*dt)
-    pd = np.exp(p*dt)
-    kd = k * np.abs(np.prod(1-pd)/np.prod(1-zd) * np.prod(z)/np.prod(p))
-
-    return zd, pd, kd, dt
 
 @njit
 def biquad_quant(b, a, x, m, n):
@@ -306,9 +246,9 @@ def biquad_quant(b, a, x, m, n):
         buffx[1] = buffx[0]
         buffx[0] = x[i]
         
-        valx = number_quantizer((b * buffx).sum(), m, n)
-        valy = number_quantizer((a * buffy).sum(), m, n)
-        y[i] = number_quantizer(valx - valy, m, n)
+        valx = quantizer_1d((b * buffx).sum(), m, n)
+        valy = quantizer_1d((a * buffy).sum(), m, n)
+        y[i] = quantizer_1d(valx - valy, m, n)
         
         buffy[1] = buffy[0]
         buffy[0] = y[i]
@@ -325,9 +265,9 @@ def zpk2sos_quant(discrete_system, Qformat):
     sos[0,:3] /= b_factor
     sos[:,:3] *= b_factor ** (1/sos.shape[0])
 
-    sos = real_quantizer(sos, Qformat)
+    sos_quant = quantizer_real(sos, Qformat)
 
-    return sos
+    return sos, sos_quant
 
 @njit
 def filtsos_quant(sos, x, m, n):
@@ -340,58 +280,7 @@ def filtsos_quant(sos, x, m, n):
 
     return y
 
-# source: https://github.com/numba/numba/issues/2648
-@jit(nopython=True)
-def rnd1(x, decimals, out):
-    return np.round_(x, decimals, out)
-
-@jit(nopython=True)
-def quantizer(x, m, n):
-    """ 
-    Input:
-    x [array] - Input signal
-    Qformat [tuple] - (m,n):
-        m [int] - Integer bits
-        n [int] - Fractional bits
-    
-    e.g. Q16.16 -> 32bit fixed-point: m = 16, n = 16
-    reference: https://en.wikipedia.org/wiki/Q_(number_format)
-    
-    Output:
-    y - sinal quantizado
-    
-    butt, cheb1 -> m = 3
-    cheb2, ellip -> m = 2
-    """
-
-    # Quantize signal
-    M = 2 ** n
-    # y = np.round(x * M) / M
-    y = np.empty(x.shape, dtype=x.dtype)
-    rnd1(x * M, 0, y)
-    y /= M
-
-    # Clip the signal
-    x_max = 2 ** (m - 1)
-    max_value = (1 - 1/M) * x_max
-    min_value = -x_max
-
-    # Clip real part
-    yr = y.real.copy()
-    yr[yr > max_value] = max_value
-    yr[yr < min_value] = min_value
-
-    # Clip imag part
-    yi = y.imag.copy()
-    yi[yi > max_value] = max_value
-    yi[yi < min_value] = min_value
-    
-    # Join parts
-    y = yr + 1j * yi
-
-    return y
-
-def real_quantizer(x, Qformat):
+def quantizer_real(x, Qformat):
     """ 
     Input:
     x [array] - Input signal
@@ -425,24 +314,7 @@ def real_quantizer(x, Qformat):
     return y
 
 @jit(nopython=True)
-def number_quantizer(x, m, n):
-    """ 
-    Input:
-    x [array] - Input signal
-    Qformat [tuple] - (m,n):
-        m [int] - Integer bits
-        n [int] - Fractional bits
-    
-    e.g. Q16.16 -> 32bit fixed-point: m = 16, n = 16
-    reference: https://en.wikipedia.org/wiki/Q_(number_format)
-    
-    Output:
-    y - sinal quantizado
-    
-    butt, cheb1 -> m = 3
-    cheb2, ellip -> m = 2
-    """
-
+def quantizer_1d(x, m, n):
     # Quantize signal
     M = 2 ** n
     y = (round(x.real * M) + 1j * round(x.imag * M)) / M
@@ -480,28 +352,39 @@ fs = 3.5e3
 Amax = 1
 Amin = 42
 spec = dict(fp=fp, fs=fs, Amax=Amax, Amin=Amin, sample_rate=sample_rate, dt=1/sample_rate)
-# analog_system, discrete_system, final_spec = optimize_filter(spec, filter_type='cau', method='bilinear', num_samples=1000)
-analog_system, discrete_system, final_spec = optimize_filter_quant(spec, filter_type='but', method='matched', limits_samples=1000)
-print(discrete_system)
-
 Qformat = (2,14)
-sos = zpk2sos_quant(discrete_system, Qformat)
+sinewave_amplitude = 0.5
+filter_type = 'cau'
+method = 'matched'
+rnd_seed = 0
+limits_samples = 1000
 
-# print(number_quantizer(1.5 + 1j,4,2))
+# Consistent results
+rnd.seed(rnd_seed)
 
-# exit(0)
+# Get filter coefficients
+analog_system, discrete_system, final_spec = optimize_filter_quant(spec, 
+    filter_type=filter_type, method=method, limits_samples=limits_samples, Qformat=Qformat, magnitude=sinewave_amplitude)
 
-print(sos)
+# Quantize filter
+sos, sos_quant = zpk2sos_quant(discrete_system, Qformat)
 
-# Qformat = (2,14)
-Qformat = (8,32)
-plot_digital(sos, Qformat, fp, fs, Amax, Amin, sample_rate=48e3, num_freqs=256, ax=None, plot_focus='all')
+# Get filter (meta)data
+filter_data = dict(fp=fp, fs=fs, Amax=Amax, Amin=Amin, sample_rate=sample_rate, spec=spec, 
+    sos=sos, sos_quant=sos_quant, final_spec=final_spec, filter_type=filter_type, method=method, 
+    limits_samples=limits_samples, Qformat=Qformat, magnitude=sinewave_amplitude, seed=rnd_seed)
+
+# Save filter (meta)data
+out_filename = f'type-{filter_type}_method-{method}.npz'
+np.savez(out_filename, **filter_data)
+
+
+print(f'Biquads:\n', sos)
+print(f'Quantized biquads (Q{Qformat[0]}.{Qformat[1]}):\n', np.round(sos * 2 ** Qformat[1]).astype(int))
+
+plot_digital(sos_quant, Qformat, fp, fs, Amax, Amin, magnitude=sinewave_amplitude, num_freqs=256, plot_focus='all')
+plot_digital(sos_quant, Qformat, fp, fs, Amax, Amin, magnitude=sinewave_amplitude, num_freqs=256, plot_focus='pass')
+plot_digital(sos_quant, Qformat, fp, fs, Amax, Amin, magnitude=sinewave_amplitude, num_freqs=256, plot_focus='stop')
 plt.show()
 
-n = 2
-x = np.linspace(-1,1,8)
-y = quantizer(x + 1j*x, *Qformat)
-
-print('Input:            ', x)
-print('Output (np.round):', y)
 
