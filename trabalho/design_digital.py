@@ -201,10 +201,6 @@ def optimize_filter_quant(spec, Qformat=(2,14), magnitude=0.5, filter_type='but'
 
     Amax_vec = rnd.uniform(0.1, spec['Amax'], num_iters)
     Amin_vec = rnd.uniform(spec['Amin'], 1.5*spec['Amin'], num_iters)
-    # fp_vec = rnd.uniform(spec['fp'], 0.5*(spec['fp'] + spec['fs']), num_iters)
-    # fp_vec = rnd.uniform(spec['fp'], spec['fs'], num_iters)
-    # fs_vec = fp_vec + rnd.uniform(0, (spec['fp'] - spec['fs'])/2, num_iters)
-    # fs_vec = fp_vec + rnd.uniform(0.5*(spec['fp'] + spec['fs']), spec['fs'], num_iters)
     fs_vec = rnd.uniform(spec['fp'], spec['fs'], num_iters)
     fp_vec = rnd.uniform(spec['fp'], spec['fs'], num_iters)
     spec_vec = np.vstack([Amax_vec, Amin_vec, fp_vec, fs_vec])
@@ -409,17 +405,18 @@ spec = dict(fp=fp, fs=fs, Amax=Amax, Amin=Amin, sample_rate=sample_rate, dt=1/sa
 Qformat = (2,14)
 sinewave_amplitude = 1 - 2 ** -Qformat[1] # max amplitude
 # sinewave_amplitude = 0.5
-rnd_seed = 0
+# rnd_seed = 0
+rnd_seed = 100
 limits_samples = 1000
 
 filter_type = 'but'
-method = 'zoh'
+method = 'bilinear'
 
 # Consistent results
 rnd.seed(rnd_seed)
 
 # Get filter coefficients
-analog_system, discrete_system, final_spec = optimize_filter_quant(spec, num_iters=5, num_samples=1000,
+analog_system, discrete_system, final_spec = optimize_filter_quant(spec, num_iters=20, num_samples=1000,
     filter_type=filter_type, method=method, limits_samples=limits_samples, Qformat=Qformat, magnitude=sinewave_amplitude)
 
 # Quantize filter
