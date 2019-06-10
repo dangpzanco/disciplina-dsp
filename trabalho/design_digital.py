@@ -27,9 +27,11 @@ def plot_zpk(system, fp, fs, Amax, Amin, sample_rate=48e3, num_freqs=1024, ax=No
         axis_focus = [1e2, 10**fmax, -50, 1]
         ax.set_xscale('log')
     elif plot_focus == 'pass':
-        axis_focus = [1000, 2500, -5, 0]
+        # axis_focus = [1000, 2500, -5, 0]
+        axis_focus = [100, 2500, -5, 1]
     elif plot_focus == 'stop':
-        axis_focus = [3000, 5000, -50, -35]
+        # axis_focus = [3000, 5000, -50, -35]
+        axis_focus = [2000, 5000, -80, -35]
 
     # Plot data
     ax.plot(f, 20 * np.log10(np.abs(h)), linewidth=2)
@@ -65,9 +67,11 @@ def plot_digital(sos, Qformat, fp, fs, Amax, Amin, magnitude=0.5, sample_rate=48
         axis_focus = [1e2, 10**fmax, -50, 1]
         ax.set_xscale('log')
     elif plot_focus == 'pass':
-        axis_focus = [1000, 2500, -5, 0]
+        # axis_focus = [1000, 2500, -5, 0]
+        axis_focus = [100, 2500, -5, 1]
     elif plot_focus == 'stop':
-        axis_focus = [3000, 5000, -50, -35]
+        # axis_focus = [3000, 5000, -50, -35]
+        axis_focus = [2000, 5000, -80, -35]
 
     # Plot data
     ax.plot(f, 20 * np.log10(np.abs(h)), linewidth=2)
@@ -123,12 +127,19 @@ def freqz_quant(sos, Qformat, magnitude=0.5, freq_vec=None, sample_rate=48e3, nu
     return f, h
 
 def get_filter(spec, filter_type='but', method='zoh'):
+
+    wp = 2*np.pi*spec['fp']
+    ws = 2*np.pi*spec['fs']
+
+    if method == 'bilinear':
+        wp = 2/spec['dt'] * np.arctan(wp * spec['dt']/2)
+        ws = 2/spec['dt'] * np.arctan(ws * spec['dt']/2)
     
     if filter_type.lower() in ('butterworth'):
-        N, Wn = signal.buttord(2*np.pi*spec['fp'], 2*np.pi*spec['fs'], spec['Amax'], spec['Amin'], analog=True)
+        N, Wn = signal.buttord(wp, ws, spec['Amax'], spec['Amin'], analog=True)
         z, p, k = signal.butter(N, Wn, output='zpk', btype='low', analog=True)
     elif filter_type.lower() in ('cauer' + 'elliptic'):
-        N, Wn = signal.ellipord(2*np.pi*fp, 2*np.pi*spec['fs'], spec['Amax'], spec['Amin'], analog=True)
+        N, Wn = signal.ellipord(wp, ws, spec['Amax'], spec['Amin'], analog=True)
         z, p, k = signal.ellip(N, spec['Amax'], spec['Amin'], Wn, output='zpk', btype='low', analog=True)
 
     def matched_method(z, p, k, dt):
@@ -148,18 +159,18 @@ def get_filter(spec, filter_type='but', method='zoh'):
 
     return analog_system, discrete_system
 
-def check_limits_quant(system, spec, Qformat, magnitude=0.5, num_freqs=1000, num_samples=1000):
+def check_limits_quant(sos, spec, Qformat, magnitude=0.5, num_freqs=1000, num_samples=1000):
 
-    f1 = np.logspace(np.floor(np.log10(spec['fp']))-1, np.log10(spec['fp']), 2*num_samples)
-    f2 = np.logspace(np.log10(spec['fs']), np.log10(spec['sample_rate']/2), num_samples)
-    f = np.hstack([f1, f2])
+    # f1 = np.logspace(np.floor(np.log10(spec['fp']))-1, np.log10(spec['fp']), 2*num_samples)
+    # f2 = np.logspace(np.log10(spec['fs']), np.log10(spec['sample_rate']/2), num_samples)
+    # f = np.hstack([f1, f2])
     # num_samples *= 2
-    # fmin = np.floor(np.log10(spec['fp']))-1
-    # fmax = np.ceil(np.log10(spec['fs']))
-    # f = np.logspace(fmin, fmax, num_freqs)
+    fmin = np.floor(np.log10(spec['fp']))-1
+    fmax = np.ceil(np.log10(spec['fs']))
+    f = np.logspace(fmin, fmax, num_freqs)
 
     # f, h = signal.freqz_zpk(*system, fs=spec['sample_rate'], worN=f)
-    sos_debug, sos = zpk2sos_quant(system, Qformat)
+    # sos_debug, sos = zpk2sos_quant(system, Qformat)
     f, h = freqz_quant(sos, Qformat, magnitude=magnitude,
         freq_vec=f, sample_rate=spec['sample_rate'], num_samples=num_samples)
     Hdb = 20 * np.log10(np.abs(h))
@@ -169,25 +180,34 @@ def check_limits_quant(system, spec, Qformat, magnitude=0.5, num_freqs=1000, num
     pass_band_faults = (pass_band < -spec['Amax']).sum() + (pass_band > 0).sum()
     stop_band_faults = (stop_band > -spec['Amin']).sum()
 
-    total_faults = pass_band_faults + stop_band_faults + system[1].size
+    total_faults = pass_band_faults + stop_band_faults
 
     # print(pass_band_faults, stop_band_faults, system[1].size)
 
-    print('sos_debug\n', sos_debug)
-    print('sos\n', sos)
+    # print('sos_debug\n', sos_debug)
+    # print('sos\n', sos)
 
-    plot_digital(sos, Qformat, spec['fp'], spec['fs'], spec['Amax'], spec['Amin'], 
-                 sample_rate=48e3, num_freqs=num_freqs, num_samples=num_samples, ax=None, plot_focus='all')
-    plt.show()
+    # fig, ax = plt.subplots()
+    # plot_zpk(system, spec['fp'], spec['fs'], spec['Amax'], spec['Amin'], 
+    #              sample_rate=48e3, num_freqs=num_freqs, ax=ax, plot_focus='pass')
+    # plot_digital(sos, Qformat, spec['fp'], spec['fs'], spec['Amax'], spec['Amin'], magnitude=magnitude,
+    #              sample_rate=48e3, num_freqs=num_freqs, num_samples=num_samples, ax=ax, plot_focus='pass')
+    # plt.show()
 
     return total_faults
 
-def optimize_filter_quant(spec, Qformat=(2,14), magnitude=0.5, filter_type='but', min_order=None, method='zoh', num_iters=50, limits_samples=1000):
+def optimize_filter_quant(spec, Qformat=(2,14), magnitude=0.5, filter_type='but', min_order=None, method='zoh', num_iters=50, limits_samples=1000, num_samples=1000):
     original_spec = spec.copy()
 
     Amax_vec = rnd.uniform(0.1, spec['Amax'], num_iters)
     Amin_vec = rnd.uniform(spec['Amin'], 1.5*spec['Amin'], num_iters)
-    spec_vec = np.vstack([Amax_vec, Amin_vec])
+    # fp_vec = rnd.uniform(spec['fp'], 0.5*(spec['fp'] + spec['fs']), num_iters)
+    # fp_vec = rnd.uniform(spec['fp'], spec['fs'], num_iters)
+    # fs_vec = fp_vec + rnd.uniform(0, (spec['fp'] - spec['fs'])/2, num_iters)
+    # fs_vec = fp_vec + rnd.uniform(0.5*(spec['fp'] + spec['fs']), spec['fs'], num_iters)
+    fs_vec = rnd.uniform(spec['fp'], spec['fs'], num_iters)
+    fp_vec = rnd.uniform(spec['fp'], spec['fs'], num_iters)
+    spec_vec = np.vstack([Amax_vec, Amin_vec, fp_vec, fs_vec])
 
     if min_order is None:
         if filter_type.lower() in ('butterworth'):
@@ -195,18 +215,24 @@ def optimize_filter_quant(spec, Qformat=(2,14), magnitude=0.5, filter_type='but'
         elif filter_type.lower() in ('cauer' + 'elliptic'):
             min_order = 4
 
+    if magnitude > 0.5:
+        min_order += 1
+
     faults = np.inf
     for i in range(num_iters):
         spec['Amax'] = spec_vec[0,i]
         spec['Amin'] = spec_vec[1,i]
+        # spec['fp'] = spec_vec[2,i]
+        # spec['fs'] = spec_vec[3,i]
         asys, dsys = get_filter(spec, filter_type=filter_type, method=method)
-        total_faults = check_limits_quant(dsys, original_spec, Qformat, 
-            magnitude=magnitude, num_freqs=limits_samples, num_samples=1000)
-        total_faults -= min_order
-
+        _, sos = zpk2sos_quant(dsys, Qformat, filter_type=filter_type)
+        total_faults = check_limits_quant(sos, original_spec, Qformat, 
+            magnitude=magnitude, num_freqs=limits_samples, num_samples=num_samples)
         filter_order = dsys[1].size
-        print(f"Amax: {spec['Amax']:.3f} dB |",
-            f"Amin: {spec['Amin']:.3f} dB |",
+        total_faults += filter_order - min_order
+
+        print(f"#{i:3} | Amax: {spec['Amax']:.3f} dB |", f"Amin: {spec['Amin']:.3f} dB |",
+            f"fp: {spec['fp']/1e3:.3f} kHz |", f"fs: {spec['fs']/1e3:.3f} kHz |",
             f"Mag. faults: {total_faults:3} of {limits_samples} |",
             f"Filter order: {filter_order}")
 
@@ -219,9 +245,6 @@ def optimize_filter_quant(spec, Qformat=(2,14), magnitude=0.5, filter_type='but'
             return analog_system, discrete_system, spec
 
     return analog_system, discrete_system, spec
-
-
-
 
 @njit
 def biquad_quant(b, a, x, m, n):
@@ -247,7 +270,7 @@ def biquad_quant(b, a, x, m, n):
     for i in range(num_samples):
         buffx[2] = buffx[1]
         buffx[1] = buffx[0]
-        buffx[0] = x[i]
+        buffx[0] = quantizer_1d(x[i], m, n)
         
         valx = quantizer_1d((b * buffx).sum(), m, n)
         valy = quantizer_1d((a * buffy).sum(), m, n)
@@ -259,21 +282,43 @@ def biquad_quant(b, a, x, m, n):
     return y
 
 
-def zpk2sos_quant(discrete_system, Qformat):
-    sos = signal.zpk2sos(*discrete_system, pairing='nearest')
+def zpk2sos_quant(discrete_system, Qformat, filter_type):
+    z, p, k = discrete_system
+    sos = signal.zpk2sos(z, p, k, pairing='nearest')
+    # sos = signal.zpk2sos(z, p, k, pairing='keep_odd')
 
     # Trick for higher accuracy on small numerator coefficients
     sos_quant = sos.copy()
-    non_zeros = np.abs(sos_quant[0,:3]) > 0
-    b_factor = np.abs(np.prod(sos_quant[0,:3][non_zeros])) ** (1/non_zeros.sum())
-    sos_quant[0,:3] /= b_factor
-    sos_quant[:,:3] *= b_factor ** (1/sos_quant.shape[0])
 
-    print('non_zeros:', non_zeros)
-    print('debug1:', np.prod(sos_quant[0,:3][non_zeros]))
-    print('b_factor:', b_factor)
+    if filter_type == 'but':
+        non_zeros = np.abs(sos_quant[0,:3]) > 0
+        # b_factor = np.abs(np.prod(sos_quant[0,:3][non_zeros])) ** (1/non_zeros.sum())
+        # sos_quant[0,:3] /= b_factor
+        # sos_quant[:,:3] *= b_factor ** (1/sos_quant.shape[0])
+
+        b_factor = np.abs(np.prod(sos_quant[0,:3][non_zeros])) ** (1/non_zeros.sum())
+        sos_quant[0,:3] /= b_factor
+
+        non_zeros2 = np.abs(sos_quant[:,:3]) > 0
+        a_factor = np.abs(np.prod(sos_quant[:,:3][non_zeros2], axis=-1)) ** (1/non_zeros2.sum(axis=-1))
+
+        # print('a_factor:\n', a_factor)
+        # print('debug_a1:\n', sos_quant[:,:3][non_zeros2].shape)
+        # print('debug_a2:\n', a_factor/a_factor.sum())
+
+        # sos_quant[:,:3] *= b_factor ** (1/sos_quant.shape[0])
+        sos_quant[:,:3] *= b_factor ** (a_factor.reshape(-1,1)/a_factor.sum())
+
+
+        # b_factor = np.abs(np.prod(sos_quant[0,:3][non_zeros])) ** (1/non_zeros.sum())
+        # sos_quant[0,:3] /= k
+        # sos_quant[:,:3] *= k ** (1/sos_quant.shape[0])
+
+    # print('k:', k)
+    # print('sos_quant:\n', sos_quant)
 
     sos_quant = quantizer_real(sos_quant, Qformat)
+
 
     return sos, sos_quant
 
@@ -360,8 +405,10 @@ fs = 3.5e3
 Amax = 1
 Amin = 42
 spec = dict(fp=fp, fs=fs, Amax=Amax, Amin=Amin, sample_rate=sample_rate, dt=1/sample_rate)
+# Qformat = (3,13)
 Qformat = (2,14)
-sinewave_amplitude = 0.5
+sinewave_amplitude = 1 - 2 ** -Qformat[1] # max amplitude
+# sinewave_amplitude = 0.5
 rnd_seed = 0
 limits_samples = 1000
 
@@ -372,11 +419,11 @@ method = 'zoh'
 rnd.seed(rnd_seed)
 
 # Get filter coefficients
-analog_system, discrete_system, final_spec = optimize_filter_quant(spec, 
+analog_system, discrete_system, final_spec = optimize_filter_quant(spec, num_iters=5, num_samples=1000,
     filter_type=filter_type, method=method, limits_samples=limits_samples, Qformat=Qformat, magnitude=sinewave_amplitude)
 
 # Quantize filter
-sos, sos_quant = zpk2sos_quant(discrete_system, Qformat)
+sos, sos_quant = zpk2sos_quant(discrete_system, Qformat, filter_type=filter_type)
 
 # Get filter (meta)data
 filter_data = dict(fp=fp, fs=fs, Amax=Amax, Amin=Amin, sample_rate=sample_rate, spec=spec, 
@@ -387,13 +434,34 @@ filter_data = dict(fp=fp, fs=fs, Amax=Amax, Amin=Amin, sample_rate=sample_rate, 
 out_filename = f'type-{filter_type}_method-{method}.npz'
 np.savez(out_filename, **filter_data)
 
+# Exemplo Matsuo smb://home/public/Walter/pds_filtr
+# a = ['0x0166','0xFEC1','0x0166','0x8D53','0x33FB','0x0B60','0xEC4C','0x0B60','0x880D','0x3B94']
+# vint = np.vectorize(lambda x: int(x,16))
+# b = vint(a).reshape(2,5)
+# c = -(b & 0x8000) | (b & 0x7fff)
+# sos_quant = np.empty([2,6])
+# sos_quant[:,:3] = c[:,:3] * 1.0
+# sos_quant[:,3] = 16384
+# sos_quant[:,4:] = c[:,3:] * 1.0
+# sos_quant /= 2 ** Qformat[1]
+
 
 print(f'Biquads:\n', sos)
-print(f'Quantized biquads (Q{Qformat[0]}.{Qformat[1]}):\n', np.round(sos * 2 ** Qformat[1]).astype(int))
+print(f'Quantized biquads (Q{Qformat[0]}.{Qformat[1]}):\n', np.round(sos_quant * 2 ** Qformat[1]).astype(int))
 
-plot_digital(sos_quant, Qformat, fp, fs, Amax, Amin, magnitude=sinewave_amplitude, num_freqs=256, plot_focus='all')
-plot_digital(sos_quant, Qformat, fp, fs, Amax, Amin, magnitude=sinewave_amplitude, num_freqs=256, plot_focus='pass')
-plot_digital(sos_quant, Qformat, fp, fs, Amax, Amin, magnitude=sinewave_amplitude, num_freqs=256, plot_focus='stop')
+num_freqs = 256
+
+fig, ax = plt.subplots()
+plot_zpk(discrete_system, fp, fs, Amax, Amin, num_freqs=num_freqs, ax=ax, plot_focus='all')
+plot_digital(sos_quant, Qformat, fp, fs, Amax, Amin, magnitude=sinewave_amplitude, num_freqs=num_freqs, ax=ax, plot_focus='all')
+
+fig, ax = plt.subplots()
+plot_zpk(discrete_system, fp, fs, Amax, Amin, num_freqs=num_freqs, ax=ax, plot_focus='pass')
+plot_digital(sos_quant, Qformat, fp, fs, Amax, Amin, magnitude=sinewave_amplitude, num_freqs=num_freqs, ax=ax, plot_focus='pass')
+
+fig, ax = plt.subplots()
+plot_zpk(discrete_system, fp, fs, Amax, Amin, num_freqs=num_freqs, ax=ax, plot_focus='stop')
+plot_digital(sos_quant, Qformat, fp, fs, Amax, Amin, magnitude=sinewave_amplitude, num_freqs=num_freqs, ax=ax, plot_focus='stop')
 plt.show()
 
 
