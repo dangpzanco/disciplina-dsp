@@ -159,7 +159,7 @@ def check_limits_quant(system, spec, Qformat, magnitude=0.5, num_freqs=1000, num
     # f = np.logspace(fmin, fmax, num_freqs)
 
     # f, h = signal.freqz_zpk(*system, fs=spec['sample_rate'], worN=f)
-    _, sos = zpk2sos_quant(system, Qformat)
+    sos_debug, sos = zpk2sos_quant(system, Qformat)
     f, h = freqz_quant(sos, Qformat, magnitude=magnitude,
         freq_vec=f, sample_rate=spec['sample_rate'], num_samples=num_samples)
     Hdb = 20 * np.log10(np.abs(h))
@@ -173,9 +173,12 @@ def check_limits_quant(system, spec, Qformat, magnitude=0.5, num_freqs=1000, num
 
     # print(pass_band_faults, stop_band_faults, system[1].size)
 
-    # plot_digital(sos, Qformat, spec['fp'], spec['fs'], spec['Amax'], spec['Amin'], 
-    #              sample_rate=48e3, num_freqs=num_freqs, num_samples=num_samples, ax=None, plot_focus='all')
-    # plt.show()
+    print('sos_debug\n', sos_debug)
+    print('sos\n', sos)
+
+    plot_digital(sos, Qformat, spec['fp'], spec['fs'], spec['Amax'], spec['Amin'], 
+                 sample_rate=48e3, num_freqs=num_freqs, num_samples=num_samples, ax=None, plot_focus='all')
+    plt.show()
 
     return total_faults
 
@@ -188,7 +191,7 @@ def optimize_filter_quant(spec, Qformat=(2,14), magnitude=0.5, filter_type='but'
 
     if min_order is None:
         if filter_type.lower() in ('butterworth'):
-            min_order = 9
+            min_order = 10
         elif filter_type.lower() in ('cauer' + 'elliptic'):
             min_order = 4
 
@@ -258,14 +261,19 @@ def biquad_quant(b, a, x, m, n):
 
 def zpk2sos_quant(discrete_system, Qformat):
     sos = signal.zpk2sos(*discrete_system, pairing='nearest')
-    
-    # Trick for higher accuracy on small numerator coefficients
-    non_zeros = sos[0,:3] > 0
-    b_factor = np.prod(sos[0,:3][non_zeros]) ** (1/non_zeros.sum())
-    sos[0,:3] /= b_factor
-    sos[:,:3] *= b_factor ** (1/sos.shape[0])
 
-    sos_quant = quantizer_real(sos, Qformat)
+    # Trick for higher accuracy on small numerator coefficients
+    sos_quant = sos.copy()
+    non_zeros = np.abs(sos_quant[0,:3]) > 0
+    b_factor = np.abs(np.prod(sos_quant[0,:3][non_zeros])) ** (1/non_zeros.sum())
+    sos_quant[0,:3] /= b_factor
+    sos_quant[:,:3] *= b_factor ** (1/sos_quant.shape[0])
+
+    print('non_zeros:', non_zeros)
+    print('debug1:', np.prod(sos_quant[0,:3][non_zeros]))
+    print('b_factor:', b_factor)
+
+    sos_quant = quantizer_real(sos_quant, Qformat)
 
     return sos, sos_quant
 
@@ -357,8 +365,8 @@ sinewave_amplitude = 0.5
 rnd_seed = 0
 limits_samples = 1000
 
-filter_type = 'cau'
-method = 'matched'
+filter_type = 'but'
+method = 'zoh'
 
 # Consistent results
 rnd.seed(rnd_seed)
