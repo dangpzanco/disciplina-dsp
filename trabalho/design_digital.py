@@ -322,16 +322,42 @@ def zpk2sos_quant(discrete_system, Qformat, filter_type):
     #     # sos_quant[:,:3] *= b_factor ** (1/sos_quant.shape[0])
     #     sos_quant[:,:3] *= b_factor ** (a_factor.reshape(-1,1)/a_factor.sum())
 
+    #     print(k)
+    #     print(sos_quant)
 
-    #     # b_factor = np.abs(np.prod(sos_quant[0,:3][non_zeros])) ** (1/non_zeros.sum())
-    #     # sos_quant[0,:3] /= k
-    #     # sos_quant[:,:3] *= k ** (1/sos_quant.shape[0])
+        # b_factor = np.abs(np.prod(sos_quant[0,:3][non_zeros])) ** (1/non_zeros.sum())
+        # sos_quant[0,:3] /= k
+        # sos_quant[:,:3] *= k ** (1/sos_quant.shape[0])
+
+    # if filter_type == 'but':
+    #     sos_quant[0,:3] /= k
+    #     non_zeros2 = np.abs(sos_quant[:,:3]) > 0
+    #     a_factor = np.abs(np.prod(sos_quant[:,:3][non_zeros2], axis=-1)) ** (1/non_zeros2.sum(axis=-1))
+    #     sos_quant[:,:3] *= k ** (a_factor.reshape(-1,1)/a_factor.sum())
+    #     print(k)
+    #     print(sos_quant)
 
     if filter_type == 'but':
-        sos_quant[0,:3] /= k
-        non_zeros2 = np.abs(sos_quant[:,:3]) > 0
-        a_factor = np.abs(np.prod(sos_quant[:,:3][non_zeros2], axis=-1)) ** (1/non_zeros2.sum(axis=-1))
-        sos_quant[:,:3] *= k ** (a_factor.reshape(-1,1)/a_factor.sum())
+        non_zeros = np.abs(sos_quant[0,:3]) > 0
+
+        b_factor = np.abs(np.prod(sos_quant[0,:3][non_zeros])) ** (1/non_zeros.sum())
+        # b_factor = k
+        sos_quant[0,:3] /= b_factor
+
+        # non_zeros2 = np.abs(sos_quant[:,:3]) > 0
+        # a_factor = np.abs(np.prod(sos_quant[:,:3][non_zeros2], axis=-1)) ** (1/non_zeros2.sum(axis=-1))
+
+        # print('a_factor:\n', a_factor)
+        # print('debug_a1:\n', sos_quant[:,:3][non_zeros2].shape)
+        # print('debug_a2:\n', a_factor/a_factor.sum())
+
+        # sos_quant[:,:3] *= b_factor ** (1/sos_quant.shape[0])
+        a_factor = sos_quant.shape[0] - np.arange(sos_quant.shape[0])
+        sos_quant[:,:3] *= b_factor ** (a_factor.reshape(-1,1)/a_factor.sum())
+
+        print(k)
+        print(sos_quant)
+
 
     if filter_type == 'cau':
         # sos_quant[0,:3] /= k
@@ -446,7 +472,7 @@ sinewave_amplitude = 1 - 2 ** -Qformat[1] # max amplitude
 rnd_seed = 100
 limits_samples = 1000
 
-filter_type = 'but'
+filter_type = 'cau'
 method = 'zoh'
 
 # Consistent results
