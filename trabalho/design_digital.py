@@ -121,7 +121,19 @@ def freqz_quant(sos, Qformat, magnitude=0.5, freq_vec=None, sample_rate=48e3, nu
     # y = signal.sosfilt(sos, x, axis=0)
     # y = signal.sosfilt(sos, cosx, axis=0) + 1j * signal.sosfilt(sos, sinx, axis=0)
 
-    h = (x * y.conjugate()).mean(axis=0) / magnitude**2
+    # freq_ind = np.argmin(np.abs(freq_vec - 500))
+    # print(freq_ind)
+    # plt.figure()
+    # plt.plot(x.real[:,freq_ind])
+    # plt.plot(y.real[:,freq_ind])
+    # plt.figure()
+    # plt.plot(x.imag[:,freq_ind])
+    # plt.plot(y.imag[:,freq_ind])
+    # plt.show()
+
+    steady_ind = 200
+    # steady_ind = 1000
+    h = (x[steady_ind:,] * y[steady_ind:,].conjugate()).mean(axis=0) / magnitude**2
     # h = (cosx * y + 1j * sinx * y).mean(axis=-1)
 
     return f, h
@@ -211,8 +223,8 @@ def optimize_filter_quant(spec, Qformat=(2,14), magnitude=0.5, filter_type='but'
         elif filter_type.lower() in ('cauer' + 'elliptic'):
             min_order = 4
 
-    if magnitude > 0.5:
-        min_order += 1
+    # if magnitude > 0.5:
+    #     min_order += 1
 
     faults = np.inf
     for i in range(num_iters):
@@ -221,16 +233,21 @@ def optimize_filter_quant(spec, Qformat=(2,14), magnitude=0.5, filter_type='but'
         # spec['fp'] = spec_vec[2,i]
         # spec['fs'] = spec_vec[3,i]
         asys, dsys = get_filter(spec, filter_type=filter_type, method=method)
+
+        filter_order = dsys[1].size
+        if filter_order != min_order:
+            continue
+
         _, sos = zpk2sos_quant(dsys, Qformat, filter_type=filter_type)
         total_faults = check_limits_quant(sos, original_spec, Qformat, 
             magnitude=magnitude, num_freqs=limits_samples, num_samples=num_samples)
-        filter_order = dsys[1].size
         total_faults += filter_order - min_order
 
         print(f"#{i:3} | Amax: {spec['Amax']:.3f} dB |", f"Amin: {spec['Amin']:.3f} dB |",
             f"fp: {spec['fp']/1e3:.3f} kHz |", f"fs: {spec['fs']/1e3:.3f} kHz |",
             f"Mag. faults: {total_faults:3} of {limits_samples} |",
             f"Filter order: {filter_order}")
+
 
         if faults > total_faults:
             faults = total_faults
@@ -286,29 +303,49 @@ def zpk2sos_quant(discrete_system, Qformat, filter_type):
     # Trick for higher accuracy on small numerator coefficients
     sos_quant = sos.copy()
 
+    # if filter_type == 'but':
+    #     non_zeros = np.abs(sos_quant[0,:3]) > 0
+    #     # b_factor = np.abs(np.prod(sos_quant[0,:3][non_zeros])) ** (1/non_zeros.sum())
+    #     # sos_quant[0,:3] /= b_factor
+    #     # sos_quant[:,:3] *= b_factor ** (1/sos_quant.shape[0])
+
+    #     b_factor = np.abs(np.prod(sos_quant[0,:3][non_zeros])) ** (1/non_zeros.sum())
+    #     sos_quant[0,:3] /= b_factor
+
+    #     non_zeros2 = np.abs(sos_quant[:,:3]) > 0
+    #     a_factor = np.abs(np.prod(sos_quant[:,:3][non_zeros2], axis=-1)) ** (1/non_zeros2.sum(axis=-1))
+
+    #     # print('a_factor:\n', a_factor)
+    #     # print('debug_a1:\n', sos_quant[:,:3][non_zeros2].shape)
+    #     # print('debug_a2:\n', a_factor/a_factor.sum())
+
+    #     # sos_quant[:,:3] *= b_factor ** (1/sos_quant.shape[0])
+    #     sos_quant[:,:3] *= b_factor ** (a_factor.reshape(-1,1)/a_factor.sum())
+
+
+    #     # b_factor = np.abs(np.prod(sos_quant[0,:3][non_zeros])) ** (1/non_zeros.sum())
+    #     # sos_quant[0,:3] /= k
+    #     # sos_quant[:,:3] *= k ** (1/sos_quant.shape[0])
+
     if filter_type == 'but':
-        non_zeros = np.abs(sos_quant[0,:3]) > 0
-        # b_factor = np.abs(np.prod(sos_quant[0,:3][non_zeros])) ** (1/non_zeros.sum())
-        # sos_quant[0,:3] /= b_factor
-        # sos_quant[:,:3] *= b_factor ** (1/sos_quant.shape[0])
-
-        b_factor = np.abs(np.prod(sos_quant[0,:3][non_zeros])) ** (1/non_zeros.sum())
-        sos_quant[0,:3] /= b_factor
-
+        sos_quant[0,:3] /= k
         non_zeros2 = np.abs(sos_quant[:,:3]) > 0
         a_factor = np.abs(np.prod(sos_quant[:,:3][non_zeros2], axis=-1)) ** (1/non_zeros2.sum(axis=-1))
+        sos_quant[:,:3] *= k ** (a_factor.reshape(-1,1)/a_factor.sum())
 
-        # print('a_factor:\n', a_factor)
-        # print('debug_a1:\n', sos_quant[:,:3][non_zeros2].shape)
-        # print('debug_a2:\n', a_factor/a_factor.sum())
-
-        # sos_quant[:,:3] *= b_factor ** (1/sos_quant.shape[0])
-        sos_quant[:,:3] *= b_factor ** (a_factor.reshape(-1,1)/a_factor.sum())
-
-
-        # b_factor = np.abs(np.prod(sos_quant[0,:3][non_zeros])) ** (1/non_zeros.sum())
+    if filter_type == 'cau':
         # sos_quant[0,:3] /= k
-        # sos_quant[:,:3] *= k ** (1/sos_quant.shape[0])
+        # # sos_quant[:,:3] *= k ** (1/sos_quant.shape[0])
+        # non_zeros2 = np.abs(sos_quant[:,:3]) > 0
+        # a_factor = np.abs(np.prod(sos_quant[:,:3][non_zeros2], axis=-1)) ** (1/non_zeros2.sum(axis=-1))
+        # sos_quant[:,:3] *= k ** (a_factor.reshape(-1,1)/a_factor.sum())
+        # print(a_factor/a_factor.sum())
+        
+        sos_quant[0,:3] /= k
+
+        sos_quant[0,:3] *= 1e-2
+        sos_quant[1,:3] *= k/1e-2
+        # sos_quant[1:,:3] *= (k/1e-2) ** (1/(sos.shape[0]-1))
 
     # print('k:', k)
     # print('sos_quant:\n', sos_quant)
@@ -410,7 +447,7 @@ rnd_seed = 100
 limits_samples = 1000
 
 filter_type = 'but'
-method = 'bilinear'
+method = 'zoh'
 
 # Consistent results
 rnd.seed(rnd_seed)
@@ -442,11 +479,13 @@ np.savez(out_filename, **filter_data)
 # sos_quant[:,4:] = c[:,3:] * 1.0
 # sos_quant /= 2 ** Qformat[1]
 
-
+# sos_quant[0,:3] /= discrete_system[-1]
+# # sos_quant[:,:3] *= discrete_system[-1] ** (1/sos_quant.shape[0])
+# sos_quant[1:,:3] *= discrete_system[-1] ** (1/(sos_quant.shape[0]-1))
 print(f'Biquads:\n', sos)
 print(f'Quantized biquads (Q{Qformat[0]}.{Qformat[1]}):\n', np.round(sos_quant * 2 ** Qformat[1]).astype(int))
 
-num_freqs = 256
+num_freqs = 200
 
 fig, ax = plt.subplots()
 plot_zpk(discrete_system, fp, fs, Amax, Amin, num_freqs=num_freqs, ax=ax, plot_focus='all')
