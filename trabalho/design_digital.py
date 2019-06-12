@@ -338,25 +338,23 @@ def zpk2sos_quant(discrete_system, Qformat, filter_type):
     #     print(sos_quant)
 
     if filter_type == 'but':
-        non_zeros = np.abs(sos_quant[0,:3]) > 0
 
+        # Geometric mean of the first biquad's B(z=1) [b0 b1 b2]
+        non_zeros = np.abs(sos_quant[0,:3]) > 0
         b_factor = np.abs(np.prod(sos_quant[0,:3][non_zeros])) ** (1/non_zeros.sum())
         # b_factor = k
+        # b_factor = np.abs(sos_quant[0,:3]).max()
         sos_quant[0,:3] /= b_factor
 
-        # non_zeros2 = np.abs(sos_quant[:,:3]) > 0
-        # a_factor = np.abs(np.prod(sos_quant[:,:3][non_zeros2], axis=-1)) ** (1/non_zeros2.sum(axis=-1))
-
-        # print('a_factor:\n', a_factor)
-        # print('debug_a1:\n', sos_quant[:,:3][non_zeros2].shape)
-        # print('debug_a2:\n', a_factor/a_factor.sum())
-
-        # sos_quant[:,:3] *= b_factor ** (1/sos_quant.shape[0])
-        a_factor = sos_quant.shape[0] - np.arange(sos_quant.shape[0])
-        sos_quant[:,:3] *= b_factor ** (a_factor.reshape(-1,1)/a_factor.sum())
+        # Increasing gain (k) thru the biquad stages
+        k_factor = 1.0 + np.arange(sos.shape[0])[::-1]
+        # k_factor = np.ones(sos.shape[0])
+        k_factor /= k_factor.sum()
+        sos_quant[:,:3] *= b_factor ** (k_factor.reshape(-1,1))
 
         print(k)
         print(sos_quant)
+        print(k_factor)
 
 
     if filter_type == 'cau':
@@ -367,11 +365,19 @@ def zpk2sos_quant(discrete_system, Qformat, filter_type):
         # sos_quant[:,:3] *= k ** (a_factor.reshape(-1,1)/a_factor.sum())
         # print(a_factor/a_factor.sum())
         
-        sos_quant[0,:3] /= k
+        # Geometric mean of the first biquad's B(z=1) [b0 b1 b2]
+        non_zeros = np.abs(sos_quant[0,:3]) > 0
+        b_factor = np.abs(np.prod(sos_quant[0,:3][non_zeros])) ** (1/non_zeros.sum())
+        # b_factor = np.abs(sos_quant[0,:3]).max()
 
-        sos_quant[0,:3] *= 1e-2
-        sos_quant[1,:3] *= k/1e-2
-        # sos_quant[1:,:3] *= (k/1e-2) ** (1/(sos.shape[0]-1))
+        sos_quant[0,:3] /= b_factor
+
+        k_factor = 1.0 + np.arange(sos.shape[0])[::-1]
+        k_factor /= k_factor.sum()
+        sos_quant[:,:3] *= b_factor ** (k_factor.reshape(-1,1))
+
+        # sos_quant[0,:3] *= 1e-2
+        # sos_quant[1,:3] *= k/1e-2
 
     # print('k:', k)
     # print('sos_quant:\n', sos_quant)
@@ -472,8 +478,8 @@ sinewave_amplitude = 1 - 2 ** -Qformat[1] # max amplitude
 rnd_seed = 100
 limits_samples = 1000
 
-filter_type = 'cau'
-method = 'zoh'
+filter_type = 'but'
+method = 'matched'
 
 # Consistent results
 rnd.seed(rnd_seed)
