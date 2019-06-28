@@ -464,72 +464,75 @@ def quantizer_1d(x, m, n):
 
     return y
 
-sample_rate = 48e3
-fp = 1.8e3
-fs = 3.5e3
-Amax = 1
-Amin = 42
-spec = dict(fp=fp, fs=fs, Amax=Amax, Amin=Amin, sample_rate=sample_rate, dt=1/sample_rate)
-# Qformat = (3,13)
-Qformat = (2,14)
-sinewave_amplitude = 1 - 2 ** -Qformat[1] # max amplitude
-# sinewave_amplitude = 0.5
-# rnd_seed = 0
-rnd_seed = 100
-limits_samples = 1000
 
-filter_type = 'but'
-method = 'matched'
+if __name__ == '__main__':
 
-# Consistent results
-rnd.seed(rnd_seed)
+    sample_rate = 48e3
+    fp = 1.8e3
+    fs = 3.5e3
+    Amax = 1
+    Amin = 42
+    spec = dict(fp=fp, fs=fs, Amax=Amax, Amin=Amin, sample_rate=sample_rate, dt=1/sample_rate)
+    # Qformat = (3,13)
+    Qformat = (2,14)
+    sinewave_amplitude = 1 - 2 ** -Qformat[1] # max amplitude
+    # sinewave_amplitude = 0.5
+    # rnd_seed = 0
+    rnd_seed = 100
+    limits_samples = 1000
 
-# Get filter coefficients
-analog_system, discrete_system, final_spec = optimize_filter_quant(spec, num_iters=20, num_samples=1000,
-    filter_type=filter_type, method=method, limits_samples=limits_samples, Qformat=Qformat, magnitude=sinewave_amplitude)
+    filter_type = 'cau'
+    method = 'matched'
 
-# Quantize filter
-sos, sos_quant = zpk2sos_quant(discrete_system, Qformat, filter_type=filter_type)
+    # Consistent results
+    rnd.seed(rnd_seed)
 
-# Get filter (meta)data
-filter_data = dict(fp=fp, fs=fs, Amax=Amax, Amin=Amin, sample_rate=sample_rate, spec=spec, 
-    sos=sos, sos_quant=sos_quant, final_spec=final_spec, filter_type=filter_type, method=method, 
-    limits_samples=limits_samples, Qformat=Qformat, magnitude=sinewave_amplitude, seed=rnd_seed)
+    # Get filter coefficients
+    analog_system, discrete_system, final_spec = optimize_filter_quant(spec, num_iters=20, num_samples=1000,
+        filter_type=filter_type, method=method, limits_samples=limits_samples, Qformat=Qformat, magnitude=sinewave_amplitude)
 
-# Save filter (meta)data
-out_filename = f'type-{filter_type}_method-{method}.npz'
-np.savez(out_filename, **filter_data)
+    # Quantize filter
+    sos, sos_quant = zpk2sos_quant(discrete_system, Qformat, filter_type=filter_type)
 
-# Exemplo Matsuo smb://home/public/Walter/pds_filtr
-# a = ['0x0166','0xFEC1','0x0166','0x8D53','0x33FB','0x0B60','0xEC4C','0x0B60','0x880D','0x3B94']
-# vint = np.vectorize(lambda x: int(x,16))
-# b = vint(a).reshape(2,5)
-# c = -(b & 0x8000) | (b & 0x7fff)
-# sos_quant = np.empty([2,6])
-# sos_quant[:,:3] = c[:,:3] * 1.0
-# sos_quant[:,3] = 16384
-# sos_quant[:,4:] = c[:,3:] * 1.0
-# sos_quant /= 2 ** Qformat[1]
+    # Get filter (meta)data
+    filter_data = dict(fp=fp, fs=fs, Amax=Amax, Amin=Amin, sample_rate=sample_rate, spec=spec, 
+        sos=sos, sos_quant=sos_quant, final_spec=final_spec, filter_type=filter_type, method=method, 
+        limits_samples=limits_samples, Qformat=Qformat, magnitude=sinewave_amplitude, seed=rnd_seed)
 
-# sos_quant[0,:3] /= discrete_system[-1]
-# # sos_quant[:,:3] *= discrete_system[-1] ** (1/sos_quant.shape[0])
-# sos_quant[1:,:3] *= discrete_system[-1] ** (1/(sos_quant.shape[0]-1))
-print(f'Biquads:\n', sos)
-print(f'Quantized biquads (Q{Qformat[0]}.{Qformat[1]}):\n', np.round(sos_quant * 2 ** Qformat[1]).astype(int))
+    # Save filter (meta)data
+    out_filename = f'type-{filter_type}_method-{method}.npz'
+    np.savez(out_filename, **filter_data)
 
-num_freqs = 200
+    # Exemplo Matsuo smb://home/public/Walter/pds_filtr
+    # a = ['0x0166','0xFEC1','0x0166','0x8D53','0x33FB','0x0B60','0xEC4C','0x0B60','0x880D','0x3B94']
+    # vint = np.vectorize(lambda x: int(x,16))
+    # b = vint(a).reshape(2,5)
+    # c = -(b & 0x8000) | (b & 0x7fff)
+    # sos_quant = np.empty([2,6])
+    # sos_quant[:,:3] = c[:,:3] * 1.0
+    # sos_quant[:,3] = 16384
+    # sos_quant[:,4:] = c[:,3:] * 1.0
+    # sos_quant /= 2 ** Qformat[1]
 
-fig, ax = plt.subplots()
-plot_zpk(discrete_system, fp, fs, Amax, Amin, num_freqs=num_freqs, ax=ax, plot_focus='all')
-plot_digital(sos_quant, Qformat, fp, fs, Amax, Amin, magnitude=sinewave_amplitude, num_freqs=num_freqs, ax=ax, plot_focus='all')
+    # sos_quant[0,:3] /= discrete_system[-1]
+    # # sos_quant[:,:3] *= discrete_system[-1] ** (1/sos_quant.shape[0])
+    # sos_quant[1:,:3] *= discrete_system[-1] ** (1/(sos_quant.shape[0]-1))
+    print(f'Biquads:\n', sos)
+    print(f'Quantized biquads (Q{Qformat[0]}.{Qformat[1]}):\n', np.round(sos_quant * 2 ** Qformat[1]).astype(int))
 
-fig, ax = plt.subplots()
-plot_zpk(discrete_system, fp, fs, Amax, Amin, num_freqs=num_freqs, ax=ax, plot_focus='pass')
-plot_digital(sos_quant, Qformat, fp, fs, Amax, Amin, magnitude=sinewave_amplitude, num_freqs=num_freqs, ax=ax, plot_focus='pass')
+    num_freqs = 200
 
-fig, ax = plt.subplots()
-plot_zpk(discrete_system, fp, fs, Amax, Amin, num_freqs=num_freqs, ax=ax, plot_focus='stop')
-plot_digital(sos_quant, Qformat, fp, fs, Amax, Amin, magnitude=sinewave_amplitude, num_freqs=num_freqs, ax=ax, plot_focus='stop')
-plt.show()
+    fig, ax = plt.subplots()
+    plot_zpk(discrete_system, fp, fs, Amax, Amin, num_freqs=num_freqs, ax=ax, plot_focus='all')
+    plot_digital(sos_quant, Qformat, fp, fs, Amax, Amin, magnitude=sinewave_amplitude, num_freqs=num_freqs, ax=ax, plot_focus='all')
+
+    fig, ax = plt.subplots()
+    plot_zpk(discrete_system, fp, fs, Amax, Amin, num_freqs=num_freqs, ax=ax, plot_focus='pass')
+    plot_digital(sos_quant, Qformat, fp, fs, Amax, Amin, magnitude=sinewave_amplitude, num_freqs=num_freqs, ax=ax, plot_focus='pass')
+
+    fig, ax = plt.subplots()
+    plot_zpk(discrete_system, fp, fs, Amax, Amin, num_freqs=num_freqs, ax=ax, plot_focus='stop')
+    plot_digital(sos_quant, Qformat, fp, fs, Amax, Amin, magnitude=sinewave_amplitude, num_freqs=num_freqs, ax=ax, plot_focus='stop')
+    plt.show()
 
 
