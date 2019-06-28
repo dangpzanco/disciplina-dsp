@@ -1,0 +1,39 @@
+Analog filter: but | Analog-to-Discrete Method: bilinear
+
+10, 29, 22, -25057, 9598,
+73, 152, 97, -25576, 10136,
+282, 442, 214, -26623, 11222,
+1092, 1427, 508, -28214, 12872,
+4229, 9399, 4182, -30346, 15082
+
+Analog filter: but | Analog-to-Discrete Method: matched
+
+156, 0, 0, -25064, 9602,
+396, 0, 0, -25557, 10118,
+1005, 0, 0, -26570, 11176,
+2549, 0, 0, -28144, 12816,
+6462, 0, 0, -30296, 15055
+
+Analog filter: but | Analog-to-Discrete Method: zoh
+
+0, 21, 658, -25465, 9911,
+33, 284, 461, -25946, 10410,
+155, 187, 46, -26930, 11432,
+734, 101, 2, -28445, 13004,
+3467, 3, 0, -30500, 15130
+
+Analog filter: cau | Analog-to-Discrete Method: bilinear
+
+656, -749, 656, -28833, 12858,
+3352, -6030, 3352, -30600, 15176
+
+Analog filter: cau | Analog-to-Discrete Method: matched
+
+593, -694, 593, -29474, 13425,
+3199, -5837, 3199, -30875, 15404
+
+Analog filter: cau | Analog-to-Discrete Method: zoh
+
+343, -528, 552, -29844, 13745,
+2758, -4835, 2701, -30942, 15444
+
