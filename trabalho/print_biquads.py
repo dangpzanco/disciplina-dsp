@@ -44,7 +44,7 @@ filter_list = ['but', 'cau']
 method_list = ['bilinear', 'matched', 'zoh']
 
 filter_dict = dict(but='Butterworth', cau='Cauer')
-method_dict = dict(bilinear='Bilinear', matched='matched')
+method_dict = dict(bilinear='Bilinear', matched='Matched Z-Transform', zoh='Zero-Order Hold')
 
 num_freqs = 200
 images_path = pathlib.Path('images')
@@ -87,20 +87,24 @@ for i, filter_type in enumerate(filter_list):
         fig, ax = plt.subplots()
         filtdesign.plot_zpk(discrete_system, fp, fs, Amax, Amin, num_freqs=num_freqs, ax=ax, plot_focus='all')
         filtdesign.plot_digital(sos_quant, Qformat, fp, fs, Amax, Amin, magnitude=sinewave_amplitude, num_freqs=num_freqs, ax=ax, plot_focus='all')
-        ax.legend(['Discrete', ''])
-        ax.set_title('Lowpass filter')
+        ax.legend(['Discrete', 'Quantized'])
+        ax.set_title(f'Frequency Reponse ({filter_dict[filter_type]}, {method_dict[method]})')
         plt.savefig(images_path / f'all_{filter_type}-{method}.eps', format='eps')
         plt.savefig(images_path / f'all_{filter_type}-{method}.png', format='png')
 
         fig, ax = plt.subplots()
         filtdesign.plot_zpk(discrete_system, fp, fs, Amax, Amin, num_freqs=num_freqs, ax=ax, plot_focus='pass')
         filtdesign.plot_digital(sos_quant, Qformat, fp, fs, Amax, Amin, magnitude=sinewave_amplitude, num_freqs=num_freqs, ax=ax, plot_focus='pass')
+        ax.legend(['Discrete', 'Quantized'])
+        ax.set_title(f'Pass Band ({filter_dict[filter_type]}, {method_dict[method]})')
         plt.savefig(images_path / f'pass_{filter_type}-{method}.eps', format='eps')
         plt.savefig(images_path / f'pass_{filter_type}-{method}.png', format='png')
 
         fig, ax = plt.subplots()
         filtdesign.plot_zpk(discrete_system, fp, fs, Amax, Amin, num_freqs=num_freqs, ax=ax, plot_focus='stop')
         filtdesign.plot_digital(sos_quant, Qformat, fp, fs, Amax, Amin, magnitude=sinewave_amplitude, num_freqs=num_freqs, ax=ax, plot_focus='stop')
+        ax.legend(['Discrete', 'Quantized'])
+        ax.set_title(f'Stop Band ({filter_dict[filter_type]}, {method_dict[method]})')
         plt.savefig(images_path / f'stop_{filter_type}-{method}.eps', format='eps')
         plt.savefig(images_path / f'stop_{filter_type}-{method}.png', format='png')
         # plt.show()
