@@ -69,14 +69,19 @@ for i, filter_type in enumerate(filter_list):
 
         # Get filter (meta)data
         filter_filename = f'type-{filter_type}_method-{method}.npz'
-        filter_data = np.load(filter_filename)
+        filter_data = np.load(filter_filename, allow_pickle=True)
 
         sos = filter_data['sos']
         sos_quant = filter_data['sos_quant']
         final_spec = filter_data['final_spec'].item()
         discrete_system = signal.sos2zpk(sos)
 
+        fp_final = final_spec['fp']
+        fs_final = final_spec['fs']
+        Amax_final = final_spec['Amax']
+        Amin_final = final_spec['Amin']
         print(f'Analog filter: {filter_type} | Analog-to-Discrete Method: {method}')
+        print(f'Final Specification: fp = {fp_final} Hz | fs = {fs_final} Hz | Amax = {Amax_final} dB | Amin = {Amin_final} dB')
         # print(f'Biquads:\n', sos)
         # print(f'Quantized biquads (Q{Qformat[0]}.{Qformat[1]}):\n', np.round(sos_quant * 2 ** Qformat[1]).astype(int))
 

@@ -94,12 +94,19 @@ def matched_method(z, p, k, dt):
     return zd, pd, kd, dt
 
 def get_filter(spec, filter_type='but', method='zoh'):
+
+    wp = 2*np.pi*spec['fp']
+    ws = 2*np.pi*spec['fs']
+
+    if method == 'bilinear':
+        wp = 2/spec['dt'] * np.arctan(wp * spec['dt']/2)
+        ws = 2/spec['dt'] * np.arctan(ws * spec['dt']/2)
     
     if filter_type.lower() in ('butterworth'):
-        N, Wn = signal.buttord(2*np.pi*spec['fp'], 2*np.pi*spec['fs'], spec['Amax'], spec['Amin'], analog=True)
+        N, Wn = signal.buttord(wp, ws, spec['Amax'], spec['Amin'], analog=True)
         z, p, k = signal.butter(N, Wn, output='zpk', btype='low', analog=True)
     elif filter_type.lower() in ('cauer' + 'elliptic'):
-        N, Wn = signal.ellipord(2*np.pi*fp, 2*np.pi*spec['fs'], spec['Amax'], spec['Amin'], analog=True)
+        N, Wn = signal.ellipord(wp, ws, spec['Amax'], spec['Amin'], analog=True)
         z, p, k = signal.ellip(N, spec['Amax'], spec['Amin'], Wn, output='zpk', btype='low', analog=True)
 
     if method == 'matched':
@@ -188,11 +195,12 @@ spec = dict(fp=fp, fs=fs, Amax=Amax, Amin=Amin, sample_rate=sample_rate, dt=1/sa
 
 
 
-analog_system, discrete_system, final_spec = optimize_filter(spec, filter_type='cau', method='matched', num_samples=1000)
+analog_system, discrete_system, final_spec = optimize_filter(spec, filter_type='but', method='matched', num_samples=1000)
 print(final_spec)
 
 print(discrete_system[-1])
 
+print(discrete_system)
 
 plot_zpk(discrete_system, fp, fs, Amax, Amin, plot_focus='all')
 plot_zpk(discrete_system, fp, fs, Amax, Amin, plot_focus='pass')
