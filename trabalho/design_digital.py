@@ -55,10 +55,10 @@ def plot_digital(sos, Qformat, fp, fs, Amax, Amin, magnitude=0.5, sample_rate=48
     fmax = np.ceil(np.log10(fs))
 
     f = np.logspace(fmin, fmax, num_freqs)
-    # f, h = freqz_quant(sos, Qformat, magnitude=magnitude, 
-    #     freq_vec=f, sample_rate=sample_rate, num_samples=num_samples)
+    f, h = freqz_quant(sos, Qformat, magnitude=magnitude, 
+        freq_vec=f, sample_rate=sample_rate, num_samples=num_samples)
 
-    f, h = signal.sosfreqz(sos, fs=sample_rate, worN=f)
+    # f, h = signal.sosfreqz(sos, fs=sample_rate, worN=f)
 
     if ax is None:
         fig, ax = plt.subplots()
@@ -134,9 +134,12 @@ def freqz_quant(sos, Qformat, magnitude=None, freq_vec=None, sample_rate=48e3, n
 
     steady_ind = 200
     # steady_ind = 1000
-    # h = (x[steady_ind:,] * y[steady_ind:,].conjugate()).mean(axis=0) / magnitude**2
-    h = yr[steady_ind:,].max(axis=1)/32768.0
+    h = (x[steady_ind:,] * y[steady_ind:,].conjugate()).mean(axis=0) / magnitude**2
+    # h = yr[steady_ind:,].max(axis=0)/32768.0
     # h = (cosx * y + 1j * sinx * y).mean(axis=-1)
+
+    epsilon = 2 ** -Qformat[-1]
+    h[np.abs(h) < epsilon] = epsilon
 
     # print(h)
 
@@ -144,7 +147,9 @@ def freqz_quant(sos, Qformat, magnitude=None, freq_vec=None, sample_rate=48e3, n
     # print(freq_ind, freq_vec[0,freq_ind])
     # plt.figure()
     # plt.plot(sinx[:,freq_ind])
-    # plt.plot(yi[:,:,freq_ind].T)
+    # plt.plot(yi[:,freq_ind].T)
+
+    # print(freq_vec.shape, h.shape)
 
     # fig, ax = plt.subplots()
     # ax.plot(freq_vec.ravel(), 20 * np.log10(np.abs(h.T)), linewidth=2)
@@ -197,9 +202,9 @@ def check_limits_quant(sos, spec, Qformat, magnitude=0.5, num_freqs=1000, num_sa
     fmax = np.ceil(np.log10(spec['fs']))
     f = np.logspace(fmin, fmax, num_freqs)
 
-    f, h = signal.sosfreqz(sos, fs=spec['sample_rate'], worN=f)
+    # f, h = signal.sosfreqz(sos, fs=spec['sample_rate'], worN=f)
     # sos_debug, sos = zpk2sos_quant(system, Qformat)
-    # f, h = freqz_quant(sos, Qformat, magnitude=magnitude, freq_vec=f, sample_rate=spec['sample_rate'], num_samples=num_samples)
+    f, h = freqz_quant(sos, Qformat, magnitude=magnitude, freq_vec=f, sample_rate=spec['sample_rate'], num_samples=num_samples)
     Hdb = 20 * np.log10(np.abs(h))
 
     pass_band = Hdb[f <= spec['fp']]
@@ -316,10 +321,10 @@ def zpk2sos_quant(discrete_system, Qformat, filter_type):
     sos = signal.zpk2sos(z, p, 1)
     num_biquads = sos.shape[0]
 
-    h0 = np.zeros([num_biquads,1])
+    h0 = np.zeros([num_biquads,1], dtype=np.complex)
     for m in np.arange(num_biquads):
         wo, h0[m] = signal.sosfreqz(sos[m,:], worN=[0])
-    h0 = h0.ravel()
+    h0 = np.abs(h0).ravel()
     gain = np.abs(k*np.prod(h0))
 
     sos[:,:3] *= gain**(1/num_biquads) / h0.reshape(-1,1)
@@ -425,46 +430,39 @@ def filtsos_quant(sos, x, m, n):
 
     num_samples = x.shape[0]
     num_biquads = sos.shape[0]
-    buffx = np.zeros((num_biquads,3), dtype=np.int16)
-    buffy = np.zeros((num_biquads,2), dtype=np.int16)
+    buff = np.zeros((num_biquads,5), dtype=np.int16)
+    # buffx = np.zeros((num_biquads,3), dtype=np.int16)
+    # buffy = np.zeros((num_biquads,2), dtype=np.int16)
     # y = np.zeros(x.shape, dtype=np.int16)
-    y = np.zeros(num_samples, dtype=np.int16)
+    y = np.zeros(num_samples)
 
     for i in range(num_samples):
 
 
-        y[i] = x[i]
+        y_temp = cast_int16(x[i])
         for k in range(sos.shape[0]):
             b = sos[k,:3]
             a = sos[k,4:]
-            buffx[k,0] = y[i]
-
-            
-            # valx = (b * buffx[k,:]).sum()
-            # valy = (a * buffy[k,:]).sum()
+            # buffx[k,0] = y[i]
+            buff[k,0] = y_temp
 
             valx = np.int32(0)
             for j in range(b.size):
-                valx = valx + np.int32(b[j]) * np.int32(buffx[k,j])
+                valx = valx + np.int32(b[j]) * np.int32(buff[k,j])
 
             valy = np.int32(0)
             for j in range(a.size):
-                valy = valy + np.int32(a[j]) * np.int32(buffy[k,j])
+                valy = valy + np.int32(a[j]) * np.int32(buff[k,j+b.size])
 
-            y[i] = cast_int16((valx - valy) >> 15)            
+            y_temp = cast_int16(2.0*(valx - valy)/2**15)
 
-            buffx[k,2] = buffx[k,1]
-            buffx[k,1] = buffx[k,0]
-            # buffx[k,0] = x[i]
+            buff[k,2] = buff[k,1]
+            buff[k,1] = buff[k,0]
 
-            buffy[k,1] = buffy[k,0]
-            buffy[k,0] = y[i]
+            buff[k,b.size+1] = buff[k,b.size]
+            buff[k,b.size] = y_temp
 
-        # if i == 10:
-        #     print(b,a)
-        #     print('Buffers:\n', buffx, buffy)
-        #     print('num, den:', valx, valy)
-        #     exit(0)
+        y[i] = y_temp
 
     return y
 
@@ -621,7 +619,7 @@ if __name__ == '__main__':
     rnd.seed(rnd_seed)
 
     # Get filter coefficients
-    analog_system, discrete_system, final_spec = optimize_filter_quant(spec, num_iters=20, num_samples=1000,
+    analog_system, discrete_system, final_spec = optimize_filter_quant(spec, num_iters=200, num_samples=1000,
         filter_type=filter_type, method=method, limits_samples=limits_samples, Qformat=Qformat, magnitude=sinewave_amplitude)
 
     # Quantize filter
@@ -668,6 +666,6 @@ if __name__ == '__main__':
     fig, ax = plt.subplots()
     plot_zpk(discrete_system, fp, fs, Amax, Amin, num_freqs=num_freqs, ax=ax, plot_focus='stop')
     plot_digital(sos_quant, Qformat, fp, fs, Amax, Amin, magnitude=sinewave_amplitude, num_freqs=num_freqs, ax=ax, plot_focus='stop')
-    # plt.show()
+    plt.show()
 
 

@@ -7,7 +7,6 @@ Final Specification: fp = 1800.0 Hz | fs = 3500.0 Hz | Amax = 0.2667953975950675
 376, 491, 175, -28214, 12872,
 266, 591, 263, -30346, 15082,
 
-inotify_add_watch("/home/zanco/.config/ibus/bus/08a1187792f54c63a6025310bbf5633c-unix-0") failed: "No space left on device"
 Analog filter: but | Analog-to-Discrete Method: matched
 Final Specification: fp = 1800.0 Hz | fs = 3500.0 Hz | Amax = 0.8602985190879133 dB | Amin = 49.05835095253887 dB
 
