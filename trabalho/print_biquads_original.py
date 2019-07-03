@@ -24,6 +24,41 @@ def print_biquads(sos, Qformat):
         print(f'{sos[i,0]}, {sos[i,1]}, {sos[i,2]}, {sos[i,4]}, {sos[i,5]},')
     print('')
 
+def biquads_zpk2(z, p, k):
+    sos = signal.zpk2sos(z, p, 1)
+    N = np.size(sos, 0)
+    sos[:, :3] *= np.abs(k)**(1/N)
+    sost = sos
+    wN = 1024
+    ho = np.zeros((N, wN))
+    for m in np.arange(N):
+        wo, ho[m] = signal.freqz(sos[m, 0:3], sos[m, 3:7], wN)
+
+    print(ho[:,0])
+
+    ht = np.prod(ho[:, 0])
+    for m in np.arange(N):
+        sost[m, 0:3] = sos[m, 0:3]*(ht/(ho[m, 0]*np.abs(ht)**(1/N)))
+
+    sos_quant = np.round(sost * 2 ** 14) * 2 ** -14
+    return sost, sos_quant
+
+def biquads_zpk(z, p, k):
+
+    sos = signal.zpk2sos(z, p, 1)
+    num_biquads = sos.shape[0]
+
+    h0 = np.zeros([num_biquads,1])
+    for m in np.arange(num_biquads):
+        wo, h0[m] = signal.sosfreqz(sos[m,:], worN=[0])
+    h0 = h0.ravel()
+    gain = np.abs(k*np.prod(h0))
+
+    sos[:,:3] *= gain**(1/num_biquads) / h0.reshape(-1,1)
+    sos_quant = np.round(sos * 2 ** 14) * 2 ** -14
+
+    return sos, sos_quant
+
 
 
 sample_rate = 48e3
@@ -52,36 +87,17 @@ images_path.mkdir(parents=True, exist_ok=True)
 
 for i, filter_type in enumerate(filter_list):
     for j, method in enumerate(method_list):
-        # # Consistent results
-        # rnd.seed(rnd_seed)
 
-        # # Get filter coefficients
-        # analog_system, discrete_system, final_spec = filtdesign.optimize_filter_quant(spec, num_iters=20, num_samples=1000,
-        #     filter_type=filter_type, method=method, limits_samples=limits_samples, Qformat=Qformat, magnitude=sinewave_amplitude)
+        # Get filter
+        analog_system, discrete_system = filtdesign.get_filter(spec, filter_type=filter_type, method=method)
 
-        # # Quantize filter
+        # Quantize filter
         # sos, sos_quant = filtdesign.zpk2sos_quant(discrete_system, Qformat, filter_type=filter_type)
 
-        # # Get filter (meta)data
-        # filter_data = dict(fp=fp, fs=fs, Amax=Amax, Amin=Amin, sample_rate=sample_rate, spec=spec, 
-        #     sos=sos, sos_quant=sos_quant, final_spec=final_spec, filter_type=filter_type, method=method, 
-        #     limits_samples=limits_samples, Qformat=Qformat, magnitude=sinewave_amplitude, seed=rnd_seed)
+        sos, sos_quant = biquads_zpk(*discrete_system)
 
-        # Get filter (meta)data
-        filter_filename = f'type-{filter_type}_method-{method}.npz'
-        filter_data = np.load(filter_filename, allow_pickle=True)
-
-        sos = filter_data['sos']
-        sos_quant = filter_data['sos_quant']
-        final_spec = filter_data['final_spec'].item()
-        discrete_system = signal.sos2zpk(sos)
-
-        fp_final = final_spec['fp']
-        fs_final = final_spec['fs']
-        Amax_final = final_spec['Amax']
-        Amin_final = final_spec['Amin']
         print(f'Analog filter: {filter_type} | Analog-to-Discrete Method: {method}')
-        print(f'Final Specification: fp = {fp_final} Hz | fs = {fs_final} Hz | Amax = {Amax_final} dB | Amin = {Amin_final} dB')
+        print(f'Specification: fp = {fp} Hz | fs = {fs} Hz | Amax = {Amax} dB | Amin = {Amin} dB')
         # print(f'Biquads:\n', sos)
         # print(f'Quantized biquads (Q{Qformat[0]}.{Qformat[1]}):\n', np.round(sos_quant * 2 ** Qformat[1]).astype(int))
 
@@ -92,26 +108,26 @@ for i, filter_type in enumerate(filter_list):
         # Plot
         fig, ax = plt.subplots()
         filtdesign.plot_zpk(discrete_system, fp, fs, Amax, Amin, num_freqs=num_freqs, ax=ax, plot_focus='all')
-        filtdesign.plot_digital(sos_quant, Qformat, fp, fs, Amax, Amin, magnitude=sinewave_amplitude, num_freqs=num_freqs, ax=ax, plot_focus='all')
-        ax.legend(['Discrete', 'Quantized'])
+        # filtdesign.plot_digital(sos_quant, Qformat, fp, fs, Amax, Amin, magnitude=sinewave_amplitude, num_freqs=num_freqs, ax=ax, plot_focus='all')
+        # ax.legend(['Discrete', 'Quantized'])
         ax.set_title(f'Frequency Reponse ({filter_dict[filter_type]}, {method_dict[method]})')
         # plt.savefig(images_path / f'all_{filter_type}-{method}.eps', format='eps')
         # plt.savefig(images_path / f'all_{filter_type}-{method}.png', format='png')
 
         fig, ax = plt.subplots()
         filtdesign.plot_zpk(discrete_system, fp, fs, Amax, Amin, num_freqs=num_freqs, ax=ax, plot_focus='pass')
-        filtdesign.plot_digital(sos_quant, Qformat, fp, fs, Amax, Amin, magnitude=sinewave_amplitude, num_freqs=num_freqs, ax=ax, plot_focus='pass')
-        ax.legend(['Discrete', 'Quantized'])
+        # filtdesign.plot_digital(sos_quant, Qformat, fp, fs, Amax, Amin, magnitude=sinewave_amplitude, num_freqs=num_freqs, ax=ax, plot_focus='pass')
+        # ax.legend(['Discrete', 'Quantized'])
         ax.set_title(f'Pass Band ({filter_dict[filter_type]}, {method_dict[method]})')
         # plt.savefig(images_path / f'pass_{filter_type}-{method}.eps', format='eps')
         # plt.savefig(images_path / f'pass_{filter_type}-{method}.png', format='png')
 
         fig, ax = plt.subplots()
         filtdesign.plot_zpk(discrete_system, fp, fs, Amax, Amin, num_freqs=num_freqs, ax=ax, plot_focus='stop')
-        filtdesign.plot_digital(sos_quant, Qformat, fp, fs, Amax, Amin, magnitude=sinewave_amplitude, num_freqs=num_freqs, ax=ax, plot_focus='stop')
-        ax.legend(['Discrete', 'Quantized'])
+        # filtdesign.plot_digital(sos_quant, Qformat, fp, fs, Amax, Amin, magnitude=sinewave_amplitude, num_freqs=num_freqs, ax=ax, plot_focus='stop')
+        # ax.legend(['Discrete', 'Quantized'])
         ax.set_title(f'Stop Band ({filter_dict[filter_type]}, {method_dict[method]})')
         # plt.savefig(images_path / f'stop_{filter_type}-{method}.eps', format='eps')
         # plt.savefig(images_path / f'stop_{filter_type}-{method}.png', format='png')
-        # plt.show()
+        plt.show()
 
