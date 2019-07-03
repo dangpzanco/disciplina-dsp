@@ -91,50 +91,66 @@ def plot_digital(sos, Qformat, fp, fs, Amax, Amin, magnitude=0.5, sample_rate=48
     return f, 20 * np.log10(np.abs(h))
 
 
-def freqz_quant(sos, Qformat, magnitude=0.5, freq_vec=None, sample_rate=48e3, num_freqs=256, num_samples=1000):
+def freqz_quant(sos, Qformat, magnitude=None, freq_vec=None, sample_rate=48e3, num_freqs=256, num_samples=1000):
 
     if freq_vec is None:
         freq_vec = np.arange(num_freqs)/num_freqs * sample_rate/2
+
+    if magnitude is None:
+        magnitude = 1 - 2 ** -Qformat[-1]
+
+    sos_quant = (sos * 32768/2).astype('int16')
 
     f = freq_vec.copy()
     num_freqs = f.size
 
     time_vec = np.arange(num_samples).reshape(-1,1)
-    freq_vec = freq_vec.ravel().reshape(1,-1)/sample_rate
+    freq_vec = freq_vec.ravel().reshape(1,-1)
     
     # Avoid clipping with mag < 1.0
     # mag = 0.75
 
     # Make complex sinusoids matrix (num_samples, num_freqs)
-    x = magnitude * np.exp(1j * 2 * np.pi * freq_vec * time_vec)
-    cosx = x.real
-    sinx = x.imag
+    x = magnitude * np.exp(1j * 2 * np.pi * freq_vec/sample_rate * time_vec)
+    cosx = np.round(x.real * 32768).astype('int16')
+    sinx = np.round(x.imag * 32768).astype('int16')
 
     # Filter for each frequency
     m, n = Qformat
-    y = np.empty(x.shape, dtype=np.complex)
+    yr = np.empty([sos.shape[0], *x.shape])
+    yi = np.empty([sos.shape[0], *x.shape])
     for i in range(num_freqs):
-        y[:,i] = filtsos_quant(sos, x[:,i], m, n)
+        yr[:,:,i] = filtsos_quant(sos_quant, cosx[:,i], m, n)
+        yi[:,:,i] = filtsos_quant(sos_quant, sinx[:,i], m, n)
+
+    x = (cosx + 1j * sinx)/32768
+    y = (yr + 1j * yi)/32768
 
     # y = filtsos_quant(sos, x, Qformat)
 
     # y = signal.sosfilt(sos, x, axis=0)
     # y = signal.sosfilt(sos, cosx, axis=0) + 1j * signal.sosfilt(sos, sinx, axis=0)
 
-    # freq_ind = np.argmin(np.abs(freq_vec - 500))
-    # print(freq_ind)
-    # plt.figure()
-    # plt.plot(x.real[:,freq_ind])
-    # plt.plot(y.real[:,freq_ind])
-    # plt.figure()
-    # plt.plot(x.imag[:,freq_ind])
-    # plt.plot(y.imag[:,freq_ind])
-    # plt.show()
 
     steady_ind = 200
     # steady_ind = 1000
-    h = (x[steady_ind:,] * y[steady_ind:,].conjugate()).mean(axis=0) / magnitude**2
+    # h = (x[steady_ind:,] * y[steady_ind:,].conjugate()).mean(axis=0) / magnitude**2
+    h = yr[:,steady_ind:,].max(axis=1)/32768.0
     # h = (cosx * y + 1j * sinx * y).mean(axis=-1)
+
+    # print(h)
+
+    freq_ind = np.argmin(np.abs(freq_vec - 100))
+    print(freq_ind, freq_vec[0,freq_ind])
+    plt.figure()
+    plt.plot(sinx[:,freq_ind])
+    plt.plot(yi[:,:,freq_ind].T)
+
+    fig, ax = plt.subplots()
+    ax.plot(freq_vec.ravel(), 20 * np.log10(np.abs(h.T)), linewidth=2)
+    plt.show()
+
+    exit(0)
 
     return f, h
 
@@ -297,84 +313,72 @@ def biquad_quant(b, a, x, m, n):
 
 def zpk2sos_quant(discrete_system, Qformat, filter_type):
     z, p, k = discrete_system
-    sos = signal.zpk2sos(z, p, k, pairing='nearest')
+    sos = signal.zpk2sos(z, p, 1, pairing='nearest')
     # sos = signal.zpk2sos(z, p, k, pairing='keep_odd')
 
     # Trick for higher accuracy on small numerator coefficients
+
+    # h0 = np.abs(z.sum()/p.sum())
+
+    num_biquads = sos.shape[0]
+
     sos_quant = sos.copy()
 
-    # if filter_type == 'but':
-    #     non_zeros = np.abs(sos_quant[0,:3]) > 0
-    #     # b_factor = np.abs(np.prod(sos_quant[0,:3][non_zeros])) ** (1/non_zeros.sum())
-    #     # sos_quant[0,:3] /= b_factor
-    #     # sos_quant[:,:3] *= b_factor ** (1/sos_quant.shape[0])
+    k_factor = 1.0 + np.arange(sos.shape[0])[::-1]
+    k_factor /= k_factor.sum()
+    # sos_quant[:,:3] *= (k) ** (k_factor.reshape(-1,1))
+    sos_quant[:,:3] *= (k) ** (1/num_biquads)
 
+    # h0 = np.empty([num_biquads,1], dtype=np.complex)
+    # for i in range(num_biquads):
+    #     w, h0[i] = signal.freqz(sos[i,:3], sos[i,3:], worN=[0])
+    # h0 = np.abs(h0).ravel()
+    # ht = np.prod(h0)
+
+    # for i in range(num_biquads):
+    #     sos_quant[:,:3] *= ht/(h0[i] * ht ** (1/num_biquads))
+
+    # print(h0)
+    # exit(0)
+
+    # if filter_type == 'but':
+
+    #     # Geometric mean of the first biquad's B(z=1) [b0 b1 b2]
+    #     non_zeros = np.abs(sos_quant[0,:3]) > 0
     #     b_factor = np.abs(np.prod(sos_quant[0,:3][non_zeros])) ** (1/non_zeros.sum())
+    #     # b_factor = k
+    #     # b_factor = np.abs(sos_quant[0,:3]).max()
     #     sos_quant[0,:3] /= b_factor
 
-    #     non_zeros2 = np.abs(sos_quant[:,:3]) > 0
-    #     a_factor = np.abs(np.prod(sos_quant[:,:3][non_zeros2], axis=-1)) ** (1/non_zeros2.sum(axis=-1))
-
-    #     # print('a_factor:\n', a_factor)
-    #     # print('debug_a1:\n', sos_quant[:,:3][non_zeros2].shape)
-    #     # print('debug_a2:\n', a_factor/a_factor.sum())
-
-    #     # sos_quant[:,:3] *= b_factor ** (1/sos_quant.shape[0])
-    #     sos_quant[:,:3] *= b_factor ** (a_factor.reshape(-1,1)/a_factor.sum())
+    #     # Increasing gain (k) thru the biquad stages
+    #     k_factor = 1.0 + np.arange(sos.shape[0])[::-1]
+    #     # k_factor = np.ones(sos.shape[0])
+    #     k_factor /= k_factor.sum()
+    #     sos_quant[:,:3] *= b_factor ** (k_factor.reshape(-1,1))
 
     #     print(k)
     #     print(sos_quant)
-
-        # b_factor = np.abs(np.prod(sos_quant[0,:3][non_zeros])) ** (1/non_zeros.sum())
-        # sos_quant[0,:3] /= k
-        # sos_quant[:,:3] *= k ** (1/sos_quant.shape[0])
-
-    # if filter_type == 'but':
-    #     sos_quant[0,:3] /= k
-    #     non_zeros2 = np.abs(sos_quant[:,:3]) > 0
-    #     a_factor = np.abs(np.prod(sos_quant[:,:3][non_zeros2], axis=-1)) ** (1/non_zeros2.sum(axis=-1))
-    #     sos_quant[:,:3] *= k ** (a_factor.reshape(-1,1)/a_factor.sum())
-    #     print(k)
-    #     print(sos_quant)
-
-    if filter_type == 'but':
-
-        # Geometric mean of the first biquad's B(z=1) [b0 b1 b2]
-        non_zeros = np.abs(sos_quant[0,:3]) > 0
-        b_factor = np.abs(np.prod(sos_quant[0,:3][non_zeros])) ** (1/non_zeros.sum())
-        # b_factor = k
-        # b_factor = np.abs(sos_quant[0,:3]).max()
-        sos_quant[0,:3] /= b_factor
-
-        # Increasing gain (k) thru the biquad stages
-        k_factor = 1.0 + np.arange(sos.shape[0])[::-1]
-        # k_factor = np.ones(sos.shape[0])
-        k_factor /= k_factor.sum()
-        sos_quant[:,:3] *= b_factor ** (k_factor.reshape(-1,1))
-
-        print(k)
-        print(sos_quant)
-        print(k_factor)
+    #     print(k_factor)
 
 
-    if filter_type == 'cau':
-        # sos_quant[0,:3] /= k
-        # # sos_quant[:,:3] *= k ** (1/sos_quant.shape[0])
-        # non_zeros2 = np.abs(sos_quant[:,:3]) > 0
-        # a_factor = np.abs(np.prod(sos_quant[:,:3][non_zeros2], axis=-1)) ** (1/non_zeros2.sum(axis=-1))
-        # sos_quant[:,:3] *= k ** (a_factor.reshape(-1,1)/a_factor.sum())
-        # print(a_factor/a_factor.sum())
+    # if filter_type == 'cau':
+    #     # sos_quant[0,:3] /= k
+    #     # # sos_quant[:,:3] *= k ** (1/sos_quant.shape[0])
+    #     # non_zeros2 = np.abs(sos_quant[:,:3]) > 0
+    #     # a_factor = np.abs(np.prod(sos_quant[:,:3][non_zeros2], axis=-1)) ** (1/non_zeros2.sum(axis=-1))
+    #     # sos_quant[:,:3] *= k ** (a_factor.reshape(-1,1)/a_factor.sum())
+    #     # print(a_factor/a_factor.sum())
         
-        # Geometric mean of the first biquad's B(z=1) [b0 b1 b2]
-        non_zeros = np.abs(sos_quant[0,:3]) > 0
-        b_factor = np.abs(np.prod(sos_quant[0,:3][non_zeros])) ** (1/non_zeros.sum())
-        # b_factor = np.abs(sos_quant[0,:3]).max()
+    #     # Geometric mean of the first biquad's B(z=1) [b0 b1 b2]
+    #     non_zeros = np.abs(sos_quant[0,:3]) > 0
+    #     b_factor = np.abs(np.prod(sos_quant[0,:3][non_zeros])) ** (1/non_zeros.sum())
+    #     # b_factor = np.abs(sos_quant[0,:3]).max()
 
-        sos_quant[0,:3] /= b_factor
+    #     sos_quant[0,:3] /= b_factor
 
-        k_factor = 1.0 + np.arange(sos.shape[0])[::-1]
-        k_factor /= k_factor.sum()
-        sos_quant[:,:3] *= b_factor ** (k_factor.reshape(-1,1))
+    #     k_factor = 1.0 + np.arange(sos.shape[0])[::-1]
+    #     k_factor /= k_factor.sum()
+    #     sos_quant[:,:3] *= b_factor ** (k_factor.reshape(-1,1))
 
         # sos_quant[0,:3] *= 1e-2
         # sos_quant[1,:3] *= k/1e-2
@@ -388,13 +392,134 @@ def zpk2sos_quant(discrete_system, Qformat, filter_type):
     return sos, sos_quant
 
 @njit
-def filtsos_quant(sos, x, m, n):
+def filtsos_quant2(sos, x, m, n):
 
     y = x.copy()
     for i in range(sos.shape[0]):
         b = sos[i,:3]
         a = sos[i,4:]
         y = biquad_quant(b, a, y, m, n)
+
+    return y
+
+@njit
+def filtsos_quant(sos, x, m, n):
+
+    num_samples = x.shape[0]
+    num_biquads = sos.shape[0]
+    buffx = np.zeros((num_biquads,3), dtype=np.int16)
+    buffy = np.zeros((num_biquads,2), dtype=np.int16)
+    # y = np.zeros(x.shape, dtype=np.int16)
+    y = np.zeros((num_biquads,num_samples), dtype=np.int16)
+
+    for i in range(num_samples):
+
+
+        y[0,i] = x[i]
+        for k in range(sos.shape[0]):
+            b = sos[k,:3]
+            a = sos[k,4:]
+            buffx[k,0] = y[k,i]
+
+            
+            # valx = (b * buffx[k,:]).sum()
+            # valy = (a * buffy[k,:]).sum()
+
+            valx = np.int32(0)
+            for j in range(b.size):
+                valx = valx + np.int32(b[j]) * np.int32(buffx[k,j])
+
+            valy = np.int32(0)
+            for j in range(a.size):
+                valy = valy + np.int32(a[j]) * np.int32(buffy[k,j])
+
+            y[k,i] = cast_int16((valx - valy) >> 15)            
+
+            buffx[k,2] = buffx[k,1]
+            buffx[k,1] = buffx[k,0]
+            # buffx[k,0] = x[i]
+
+            buffy[k,1] = buffy[k,0]
+            buffy[k,0] = y[k,i]
+
+        # if i == 10:
+        #     print(b,a)
+        #     print('Buffers:\n', buffx, buffy)
+        #     print('num, den:', valx, valy)
+        #     exit(0)
+
+    return y
+
+@njit
+def cast_int16(x):
+    # Clipping limits
+    max_value = np.int16(32767)
+    min_value = np.int16(-32768)
+
+    # Clip output
+    if x < min_value:
+        return min_value
+    elif x > max_value:
+        return max_value
+    else:
+        return np.int16(x)
+
+@njit
+def cast_int32(x):
+    # Clipping limits
+    max_value = np.int16(2**31 - 1)
+    min_value = np.int16(-2**31)
+
+    # Clip output
+    if x < min_value:
+        return min_value
+    elif x > max_value:
+        return max_value
+    else:
+        return np.int32(x)
+
+@jit(nopython=True)
+def quantizer_int16(x):
+    # Quantize signal
+    n = 15
+    m = 1
+    M = 2 ** n
+
+    y = round(x * M) / M
+
+    # Clipping limits
+    x_max = 2 ** (m - 1)
+    max_value = (1 - 1/M) * x_max
+    min_value = -x_max
+
+    # Clip output
+    if y < min_value:
+        y = min_value
+    elif y > max_value:
+        y = max_value
+
+    return y
+
+
+@jit(nopython=True)
+def quantizer_int32(x):
+    # Quantize signal
+    n = 31
+    m = 1
+    M = 2 ** n
+
+    y = round(x * M) / M
+
+    # CLipping limits
+    x_max = 2 ** (m - 1)
+    max_value = (1 - 1/M) * x_max
+    min_value = -x_max
+
+    # Clip output
+    if y < min_value:
+        y = min_value
+    elif y > max_value:
+        y = max_value
 
     return y
 
@@ -435,35 +560,21 @@ def quantizer_real(x, Qformat):
 def quantizer_1d(x, m, n):
     # Quantize signal
     M = 2 ** n
-    y = (round(x.real * M) + 1j * round(x.imag * M)) / M
-    # y = np.round(x * M) / M
 
-    # Clip the signal
+    y = round(x * M) / M
+
+    # CLipping limits
     x_max = 2 ** (m - 1)
     max_value = (1 - 1/M) * x_max
     min_value = -x_max
 
-    # Clip real part
-    if y.real < min_value:
-        yr = min_value
-    elif y.real > max_value:
-        yr = max_value
-    else:
-        yr = y.real
-
-    # Clip imag part
-    if y.imag < min_value:
-        yi = min_value
-    elif y.imag > max_value:
-        yi = max_value
-    else:
-        yi = y.imag
-    
-    # Join parts
-    y = yr + 1j * yi
+    # Clip output
+    if y < min_value:
+        y = min_value
+    elif y > max_value:
+        y = max_value
 
     return y
-
 
 if __name__ == '__main__':
 
@@ -481,8 +592,8 @@ if __name__ == '__main__':
     rnd_seed = 100
     limits_samples = 1000
 
-    filter_type = 'cau'
-    method = 'matched'
+    filter_type = 'but'
+    method = 'bilinear'
 
     # Consistent results
     rnd.seed(rnd_seed)
@@ -493,6 +604,8 @@ if __name__ == '__main__':
 
     # Quantize filter
     sos, sos_quant = zpk2sos_quant(discrete_system, Qformat, filter_type=filter_type)
+
+    # discrete_system = signal.sos2zpk(sos_quant)
 
     # Get filter (meta)data
     filter_data = dict(fp=fp, fs=fs, Amax=Amax, Amin=Amin, sample_rate=sample_rate, spec=spec, 
