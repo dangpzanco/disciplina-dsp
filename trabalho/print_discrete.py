@@ -71,6 +71,11 @@ method_list = ['bilinear', 'matched', 'zoh']
 filter_dict = dict(but='Butterworth', cau='Cauer')
 method_dict = dict(bilinear='Bilinear', matched='Matched Z-Transform', zoh='Zero-Order Hold')
 
+# wp = sample_rate/np.pi * np.arctan(np.pi * fp/sample_rate)
+# ws = sample_rate/np.pi * np.arctan(np.pi * fs/sample_rate)
+# print(wp,ws)
+# exit(0)
+
 num_freqs = 200
 images_path = pathlib.Path('images')
 images_path.mkdir(parents=True, exist_ok=True)

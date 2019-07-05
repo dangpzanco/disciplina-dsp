@@ -68,6 +68,40 @@ def plot_response(freq, amp, amp0=None, ax=None):
     ax.plot(freq.values, 20*np.log10(amp.values/amp0), 'k*', linewidth=2)
 
 
+def plot_zpk(system, fp, fs, Amax, Amin, sample_rate=48e3, num_freqs=1024, ax=None, plot_focus='all'):
+
+    fmin = np.floor(np.log10(fp))-1
+    fmax = np.ceil(np.log10(fs))
+
+    f = np.logspace(fmin, fmax, num_freqs)
+    f, h = signal.freqz_zpk(*system, fs=sample_rate, worN=f)
+
+    if ax is None:
+        fig, ax = plt.subplots()
+    
+    if plot_focus == 'all':
+        axis_focus = [1e2, 10**fmax, -50, 1]
+        ax.set_xscale('log')
+    elif plot_focus == 'pass':
+        axis_focus = [100, 2500, -5, 1]
+    elif plot_focus == 'stop':
+        axis_focus = [2000, 5000, -80, -35]
+
+    # Plot data
+    ax.plot(f, 20 * np.log10(np.abs(h)), linewidth=2)
+
+    # Plot boxes
+    box_style = dict(linewidth=2, linestyle='--', edgecolor='k', facecolor='0.9')
+    ax.fill([10**fmin, 10**fmin,  fp,  fp], [-Amin*2, -Amax, -Amax, -Amin*2], **box_style) # pass
+    ax.fill([fs, fs,  10**fmax,  10**fmax], [-Amin, Amax, Amax, -Amin], **box_style) # stop
+
+    # Set plot properties
+    ax.set_xlabel('Frequency [Hz]', fontsize=12)
+    ax.set_ylabel('Amplitude [dB]', fontsize=12)
+    ax.grid(True, which='both', axis='both')
+    ax.axis(axis_focus, fontsize=12)
+
+
 sample_rate = 48e3
 fp = 1.8e3
 fs = 3.5e3
@@ -114,34 +148,36 @@ for i, filter_type in enumerate(filter_list):
         # Plot
         fig, ax = plt.subplots()
         # filtdesign.plot_digital(sos_quant, Qformat, fp, fs, Amax, Amin, magnitude=sinewave_amplitude, num_freqs=num_freqs, ax=ax, plot_focus='all')
-        filtdesign.plot_zpk(discrete_system, fp, fs, Amax, Amin, num_freqs=num_freqs, ax=ax, plot_focus='all')
+        plot_zpk(discrete_system, fp, fs, Amax, Amin, num_freqs=num_freqs, ax=ax, plot_focus='all')
         plot_response(**data, ax=ax)
-        ax.set_title(f'Frequency Reponse ({filter_dict[filter_type]}, {method_dict[method]})')
-        ax.legend(['Discrete', 'Quantized (Experiment)'])
+        ax.set_title(f'Frequency Reponse ({filter_dict[filter_type]}, {method_dict[method]})', fontsize=12)
+        ax.legend(['Discrete', 'Quantized (Experiment)'], fontsize=12, loc='lower left')
+        plt.tight_layout()
         plt.savefig(images_path / f'all_{filter_type}-{method}.eps', format='eps')
         plt.savefig(images_path / f'all_{filter_type}-{method}.png', format='png')
 
         fig, ax = plt.subplots()
-        filtdesign.plot_zpk(discrete_system, fp, fs, Amax, Amin, num_freqs=num_freqs, ax=ax, plot_focus='pass')
+        plot_zpk(discrete_system, fp, fs, Amax, Amin, num_freqs=num_freqs, ax=ax, plot_focus='pass')
         # filtdesign.plot_digital(sos_quant, Qformat, fp, fs, Amax, Amin, magnitude=sinewave_amplitude, num_freqs=num_freqs, ax=ax, plot_focus='pass')
         plot_response(**data, ax=ax)
-        ax.set_title(f'Pass Band ({filter_dict[filter_type]}, {method_dict[method]})')
-        ax.legend(['Discrete', 'Quantized (Experiment)'])
+        ax.set_title(f'Pass Band ({filter_dict[filter_type]}, {method_dict[method]})', fontsize=12)
+        ax.legend(['Discrete', 'Quantized (Experiment)'], fontsize=12, loc='lower left')
+        plt.tight_layout()
         plt.savefig(images_path / f'pass_{filter_type}-{method}.eps', format='eps')
         plt.savefig(images_path / f'pass_{filter_type}-{method}.png', format='png')
 
         fig, ax = plt.subplots()
-        filtdesign.plot_zpk(discrete_system, fp, fs, Amax, Amin, num_freqs=num_freqs, ax=ax)
+        plot_zpk(discrete_system, fp, fs, Amax, Amin, num_freqs=num_freqs, ax=ax)
         # filtdesign.plot_digital(sos_quant, Qformat, fp, fs, Amax, Amin, magnitude=sinewave_amplitude, num_freqs=num_freqs, ax=ax)
         plot_response(**data, ax=ax)
         axis_focus = [1700, 3600, -50, 10]
         ax.set_xscale('linear')
         ax.axis(axis_focus)
-        ax.set_title(f'Transition Band ({filter_dict[filter_type]}, {method_dict[method]})')
-        ax.legend(['Discrete', 'Quantized (Experiment)'])
+        ax.set_title(f'Transition Band ({filter_dict[filter_type]}, {method_dict[method]})', fontsize=12)
+        ax.legend(['Discrete', 'Quantized (Experiment)'], fontsize=12, loc='lower left')
+        plt.tight_layout()
         plt.savefig(images_path / f'trans_{filter_type}-{method}.eps', format='eps')
         plt.savefig(images_path / f'trans_{filter_type}-{method}.png', format='png')
 
-
-        # plt.show()
+        plt.show()
 
