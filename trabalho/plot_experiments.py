@@ -9,6 +9,8 @@ import scipy.misc as misc
 import warnings
 import pathlib
 
+import design_digital as filtdesign
+
 warnings.filterwarnings('ignore', '.*Ill-conditioned matrix.*')
 warnings.filterwarnings('ignore', '.*Badly conditioned filter coefficients.*')
 np.set_printoptions(linewidth=300, precision=4, floatmode='fixed', formatter={'float':lambda x: f'{x}'})
@@ -54,13 +56,16 @@ def plot_boxes(fp, fs, Amax, Amin, ax=None, plot_focus='all'):
     ax.grid(True, which='both', axis='both')
     ax.axis(axis_focus)
 
-def plot_response(freq, amp, ax=None):
+def plot_response(freq, amp, amp0=None, ax=None):
 
     if ax is None:
         fig, ax = plt.subplots()
 
-    ax.plot(freq, amp, linewidth=2)
+    if amp0 is None:
+        amp0 = np.max(amp.values[:6])
+        # amp0 = 1.82
 
+    ax.plot(freq.values, 20*np.log10(amp.values/amp0), 'k*', linewidth=2)
 
 
 sample_rate = 48e3
@@ -82,19 +87,25 @@ filter_dict = dict(but='Butterworth', cau='Cauer')
 method_dict = dict(bilinear='Bilinear', matched='Matched Z-Transform', zoh='Zero-Order Hold')
 
 num_freqs = 200
-images_path = pathlib.Path('images')
+images_path = pathlib.Path('images/experiments/')
 images_path.mkdir(parents=True, exist_ok=True)
 
 for i, filter_type in enumerate(filter_list):
     for j, method in enumerate(method_list):
 
+        # Get filter (meta)data
+        filter_filename = f'type-{filter_type}_method-{method}.npz'
+        filter_data = np.load(filter_filename, allow_pickle=True)
+        sos = filter_data['sos']
+        sos_quant = filter_data['sos_quant']
+        final_spec = filter_data['final_spec'].item()
+        discrete_system = signal.sos2zpk(sos)
+
         # Get filter experiment data
-        filter_filename = f'experiments/exp-{filter_type}_{method}.csv'
-        data = pd.read_csv(filter_filename).to_dict('series')
+        experiment_filename = f'experiments/exp-{filter_type}_{method}.csv'
+        data = pd.read_csv(experiment_filename).to_dict('series')
 
-        data['amp'] /= 1.82
-
-        print(data)
+        # print(data['freq'].values, data['amp'].values)
         # exit(0)
 
         print(f'Analog filter: {filter_type} | Analog-to-Discrete Method: {method}')
@@ -102,24 +113,35 @@ for i, filter_type in enumerate(filter_list):
         
         # Plot
         fig, ax = plt.subplots()
+        # filtdesign.plot_digital(sos_quant, Qformat, fp, fs, Amax, Amin, magnitude=sinewave_amplitude, num_freqs=num_freqs, ax=ax, plot_focus='all')
+        filtdesign.plot_zpk(discrete_system, fp, fs, Amax, Amin, num_freqs=num_freqs, ax=ax, plot_focus='all')
         plot_response(**data, ax=ax)
-        plot_boxes(fp, fs, Amax, Amin, ax=ax, plot_focus='all')
         ax.set_title(f'Frequency Reponse ({filter_dict[filter_type]}, {method_dict[method]})')
-        # plt.savefig(images_path / f'all_{filter_type}-{method}.eps', format='eps')
-        # plt.savefig(images_path / f'all_{filter_type}-{method}.png', format='png')
+        ax.legend(['Discrete', 'Quantized (Experiment)'])
+        plt.savefig(images_path / f'all_{filter_type}-{method}.eps', format='eps')
+        plt.savefig(images_path / f'all_{filter_type}-{method}.png', format='png')
 
         fig, ax = plt.subplots()
+        filtdesign.plot_zpk(discrete_system, fp, fs, Amax, Amin, num_freqs=num_freqs, ax=ax, plot_focus='pass')
+        # filtdesign.plot_digital(sos_quant, Qformat, fp, fs, Amax, Amin, magnitude=sinewave_amplitude, num_freqs=num_freqs, ax=ax, plot_focus='pass')
         plot_response(**data, ax=ax)
-        plot_boxes(fp, fs, Amax, Amin, ax=ax, plot_focus='pass')
         ax.set_title(f'Pass Band ({filter_dict[filter_type]}, {method_dict[method]})')
-        # plt.savefig(images_path / f'pass_{filter_type}-{method}.eps', format='eps')
-        # plt.savefig(images_path / f'pass_{filter_type}-{method}.png', format='png')
+        ax.legend(['Discrete', 'Quantized (Experiment)'])
+        plt.savefig(images_path / f'pass_{filter_type}-{method}.eps', format='eps')
+        plt.savefig(images_path / f'pass_{filter_type}-{method}.png', format='png')
 
         fig, ax = plt.subplots()
+        filtdesign.plot_zpk(discrete_system, fp, fs, Amax, Amin, num_freqs=num_freqs, ax=ax)
+        # filtdesign.plot_digital(sos_quant, Qformat, fp, fs, Amax, Amin, magnitude=sinewave_amplitude, num_freqs=num_freqs, ax=ax)
         plot_response(**data, ax=ax)
-        plot_boxes(fp, fs, Amax, Amin, ax=ax, plot_focus='stop')
-        ax.set_title(f'Stop Band ({filter_dict[filter_type]}, {method_dict[method]})')
-        # plt.savefig(images_path / f'stop_{filter_type}-{method}.eps', format='eps')
-        # plt.savefig(images_path / f'stop_{filter_type}-{method}.png', format='png')
-        plt.show()
+        axis_focus = [1700, 3600, -50, 10]
+        ax.set_xscale('linear')
+        ax.axis(axis_focus)
+        ax.set_title(f'Transition Band ({filter_dict[filter_type]}, {method_dict[method]})')
+        ax.legend(['Discrete', 'Quantized (Experiment)'])
+        plt.savefig(images_path / f'trans_{filter_type}-{method}.eps', format='eps')
+        plt.savefig(images_path / f'trans_{filter_type}-{method}.png', format='png')
+
+
+        # plt.show()
 
