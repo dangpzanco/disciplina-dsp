@@ -1,5 +1,8 @@
 import numpy as np
+import numpy.fft as libfft
 import librosa
+
+import matplotlib.pyplot as plt
 
 
 
@@ -44,46 +47,74 @@ def IsCandidate(s, c, pitch, num_s, num_c, ratio, NumPerOctave):
 
 
 
+def nonlinear_func(X, g, cutoff):
+    if g != 0:
+        X[X < 0] = 0
+        X[:cutoff,] = 0
+        X[end-cutoff+1:,] = 0
+        X = X ** g
+    else:
+        X = log(X)
+        X(1:cutoff, :) = 0
+        X(end-cutoff+1:end, :) = 0
+
+
+
+# fr = 4;
+# Hop = round(1e-3*fs);
+# nfft = 4096;
+# h = hamming(nfft+1);
+# g1 = 0.6;
+# g2 = 0.8;
+
+
 # function [tfr, ceps, GCoS, upcp, upcpt, upcp_final, t] = CFP_GCoS(x, fr, fs, Hop, h, g1, g2)
-def CFP_GCoS(x, fr, fs, Hop, h, g1, g2):
+def CFP_GCoS(x, g1=0.6, g2=0.8, fs=44.1e3, n_fft=8192, hop_length_seconds=1e-3, win_length_seconds=10e-3, window='hann'):
     fc = 20
     tc = 1/20000
 
-    [tfr, f, t, N] = STFT(x, fr, fs, Hop, h);
-    tfr = abs(tfr).^g1;
+    fr = fs/n_fft
 
-    fc_idx = round(fc/fr);
-    tc_idx = round(fs*tc);
+    hop_length_seconds = int(np.round(hop_length * fs))
+    win_length_seconds = int(np.round(win_length * fs))
 
-    tfr = nonlinear_func(abs(tfr), g1, fc_idx);
-    ceps = real(fft(tfr))./sqrt(N);
-    ceps = nonlinear_func(ceps, g2, tc_idx);
+    # [tfr, f, t, N] = STFT(x, fr, fs, Hop, h)
+    # [tfr, f, t, n_fft] = STFT(x, fr, fs, Hop, h)
+    librosa.stft(y, n_fft=n_fft, hop_length=None, win_length=None, window=window)
+    tfr = np.abs(tfr) ** g1
 
-    GCoS = real(fft(ceps))./sqrt(N);
-    GCoS = nonlinear_func(GCoS, 1, fc_idx);
+    fc_idx = int(np.round(fc/fr))
+    tc_idx = int(np.round(fs*tc))
 
-    tfr = tfr(1:round(N/2),:);
-    ceps = ceps(1:round(N/2),:);
-    GCoS = GCoS(1:round(N/2),:);
+    tfr = nonlinear_func(np.abs(tfr), g1, fc_idx)
+    ceps = libfft.fft(tfr).real / np.sqrt(n_fft)
+    ceps = nonlinear_func(ceps, g2, tc_idx)
 
-    HighFreqIdx = round((1/tc)/fr)+1;
-    f = f(1:HighFreqIdx);
-    tfr = tfr(1:HighFreqIdx,:);
-    HighQuefIdx = round(fs/fc)+1;
-    q = (0:HighQuefIdx-1)./fs;
-    ceps = ceps(1:HighQuefIdx,:);
+    GCoS = libfft.fft(ceps).real./sqrt(n_fft)
+    GCoS = nonlinear_func(GCoS, 1, fc_idx)
 
-    GCoS = PeakPicking(GCoS);
-    ceps = PeakPicking(ceps);
+    tfr = tfr(1:round(n_fft/2),:)
+    ceps = ceps(1:round(n_fft/2),:)
+    GCoS = GCoS(1:round(n_fft/2),:)
 
-    % tceps = CepsConvertFreq(ceps, f, fs);
+    HighFreqIdx = round((1/tc)/fr)+1
+    f = f(1:HighFreqIdx)
+    tfr = tfr(1:HighFreqIdx,:)
+    HighQuefIdx = round(fs/fc)+1
+    q = (0:HighQuefIdx-1)./fs
+    ceps = ceps(1:HighQuefIdx,:)
 
-    midi_num=-3:133;
-    fd=440*2.^((midi_num-69-0.5)/12);
-    upcp = PitchProfileFreq(GCoS, f, fd);
-    upcpt = PitchProfileQuef(ceps, 1./q, fd);
+    GCoS = PeakPicking(GCoS)
+    ceps = PeakPicking(ceps)
 
-    [upcp, upcpt, upcp_final] = PitchFusion(upcp, upcpt, 4, 4, 0.7, 12);
+    % tceps = CepsConvertFreq(ceps, f, fs)
+
+    midi_num=-3:133
+    fd=440*2.^((midi_num-69-0.5)/12)
+    upcp = PitchProfileFreq(GCoS, f, fd)
+    upcpt = PitchProfileQuef(ceps, 1./q, fd)
+
+    [upcp, upcpt, upcp_final] = PitchFusion(upcp, upcpt, 4, 4, 0.7, 12)
 
     return results
 
