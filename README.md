@@ -1,2 +1,2 @@
 # disciplina-dsp
-Código utilizado na disciplina EEL510384 - Processamento Digital de Sinais
+Código utilizado nas disciplina EEL510384 e EEL510274 - Processamento Digital de Sinais (Avançados)
