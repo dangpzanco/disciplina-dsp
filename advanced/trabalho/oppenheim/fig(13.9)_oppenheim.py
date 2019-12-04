@@ -14,9 +14,6 @@ zV, pV, kV = outils.Vz()
 circle = outils.unit_circle(100)
 
 
-
-
-
 plot_options = dict(markersize=10, markeredgewidth=1.5, markerfacecolor='none')
 
 fig, ax = plt.subplots(figsize=(5,5))
