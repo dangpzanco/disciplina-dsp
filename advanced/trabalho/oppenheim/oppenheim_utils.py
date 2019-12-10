@@ -38,6 +38,31 @@ def vn(n, b0=0.98, b1=1, r=0.9, theta=np.pi/6):
 
     return v
 
+def vhatn(n, b0=0.98, b1=1, r=0.9, theta=np.pi/6):
+
+    pos_n = n[n > 0]
+    neg_n = n[n < 0]
+
+    v = np.empty(n.size, dtype=np.complex)
+
+    v[n == 0] = np.log(b1)
+
+    v[n > 0] = r ** pos_n / pos_n * ( np.exp(1j*theta) ** pos_n + np.exp(-1j*theta) ** pos_n )
+
+    v[n < 0] = 1 / neg_n * (-b0 / b1) ** (-neg_n)
+
+    return v
+
+
+def phatn(n, beta=0.9, N0=15, num_echoes=2):
+    # p = unit_impulse(n) + beta * unit_impulse(n - N0) + beta ** 2 * unit_impulse(n - 2*N0)
+
+    p = 0
+    for i in range(num_echoes+1):
+        p += (beta ** i) * unit_impulse(n - i*N0)
+
+    return p
+
 
 def Pz(beta=0.9, N0=15, num_echoes=2):
 

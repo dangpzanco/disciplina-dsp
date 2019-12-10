@@ -23,7 +23,7 @@ indf = indi + num_samples
 x = np.convolve(v, p, mode='full')[indi:indf]
 
 
-gamma = 2
+gamma = 0.5
 real_mode = False
 xv = utils.ceps(x, gamma, real=real_mode)
 

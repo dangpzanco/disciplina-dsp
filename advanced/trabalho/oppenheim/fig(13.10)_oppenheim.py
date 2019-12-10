@@ -6,7 +6,7 @@ import oppenheim_utils as outils
 
 
 
-num_samples = 100
+num_samples = 101
 indi = 20
 n = np.arange(num_samples) - indi
 
@@ -23,7 +23,7 @@ print(x.shape)
 
 stem_options = dict(markerfmt='k.', basefmt='k,', use_line_collection=True)
 
-fig, ax = plt.subplots(3,1,figsize=(7,10))
+fig, ax = plt.subplots(3,1,figsize=(7,10), sharex=True)
 
 ax[0].stem(n, v, 'k', **stem_options)
 ax[1].stem(n, p, 'k', **stem_options)
@@ -42,7 +42,7 @@ plt.tight_layout(0.2)
 
 out_folder = outils.out_folder
 
-plt.savefig(out_folder / 'oppenheim_fig(13.10).png', format='png')
+plt.savefig(out_folder / 'oppenheim_fig(13.10).png', format='png', dpi=600)
 plt.savefig(out_folder / 'oppenheim_fig(13.10).pdf', format='pdf')
 
 plt.show()

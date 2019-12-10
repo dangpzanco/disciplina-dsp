@@ -42,7 +42,7 @@ for i in range(3):
 
 plt.tight_layout(0.2)
 out_folder = outils.out_folder
-plt.savefig(out_folder / 'oppenheim_fig(13.12).png', format='png')
+plt.savefig(out_folder / 'oppenheim_fig(13.12).png', format='png', dpi=600)
 plt.savefig(out_folder / 'oppenheim_fig(13.12).pdf', format='pdf')
 plt.show()
 

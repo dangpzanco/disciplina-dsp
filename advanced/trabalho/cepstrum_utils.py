@@ -46,6 +46,24 @@ def vn(n, b0=0.98, b1=1, r=0.9, theta=np.pi/6):
 def nextpow2(A):
     return int(np.ceil(np.log2(A)))
 
+
+def log(a, gamma=0):
+    if np.abs(gamma) < eps:
+        b = np.log(a)
+    else:
+        b = (a ** gamma - 1) / gamma
+
+    return b
+
+def exp(a, gamma=0):
+    if np.abs(gamma) < eps:
+        # a.imag = np.unwrap(a.imag)
+        b = np.exp(a)
+    else:
+        b = (a * gamma + 1) ** (1/gamma)
+
+    return b
+
 def ceps(x, gamma, real=True, fft_size='auto'):
     
     if real:
@@ -115,6 +133,55 @@ def root_cepstrum(x, gamma, real=True):
 
 
 
+
+
+def rceps(x, gamma, real=True, fft_size='auto'):
+    
+    if real:
+        fft_func = fftlib.rfft
+        ifft_func = fftlib.irfft
+    else:
+        fft_func = fftlib.fft
+        ifft_func = fftlib.ifft
+
+    if fft_size is None:
+        N = 2 ** nextpow2(x.size)
+    else:
+        N = x.size
+
+    X = fft_func(x, N)
+
+    if np.abs(gamma) < eps:
+        Xv = np.log(X)
+    else:
+        Xv = (X ** gamma - 1) / gamma
+
+    Xv.imag = np.unwrap(Xv.imag)
+    xv = ifft_func(Xv)
+
+    return xv
+
+
+def irceps(xv, gamma, real=True):
+    
+    if real:
+        fft_func = fftlib.rfft
+        ifft_func = fftlib.irfft
+    else:
+        fft_func = fftlib.fft
+        ifft_func = fftlib.ifft
+
+    Xv = fft_func(xv)
+
+    if np.abs(gamma) < eps:
+        # Xv.imag = np.unwrap(Xv.imag)
+        X = np.exp(Xv)
+    else:
+        X = (Xv * gamma + 1) ** (1/gamma)
+
+    x = ifft_func(X)
+
+    return x
 
 
 

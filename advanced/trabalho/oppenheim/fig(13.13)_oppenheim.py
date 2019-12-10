@@ -8,10 +8,15 @@ import oppenheim_utils as outils
 
 
 num_samples = 1024
-n = np.arange(num_samples)
+indi = 0
+n = np.arange(num_samples) - indi
+
 
 p = outils.pn(n)
 v = outils.vn(n)
+
+indf = indi + num_samples
+x = np.convolve(p, v, mode='full')[indi:indf]
 
 # indf = indi + num_samples
 # x_full = np.convolve(p, v, mode='full')
@@ -22,8 +27,8 @@ v = outils.vn(n)
 
 P = fftlib.rfft(p)
 V = fftlib.rfft(v)
-# X = fftlib.rfft(x)
-X = P * V
+X = fftlib.rfft(x)
+# X = P * V
 
 Xlog = np.log(X)
 
@@ -55,7 +60,7 @@ for i in range(3):
 
 plt.tight_layout(0.2)
 out_folder = outils.out_folder
-plt.savefig(out_folder / 'oppenheim_fig(13.13).png', format='png')
+plt.savefig(out_folder / 'oppenheim_fig(13.13).png', format='png', dpi=600)
 plt.savefig(out_folder / 'oppenheim_fig(13.13).pdf', format='pdf')
 plt.show()
 

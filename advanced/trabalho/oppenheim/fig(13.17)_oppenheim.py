@@ -8,19 +8,28 @@ import oppenheim_utils as outils
 
 
 num_samples = 1024
-n = np.arange(num_samples)
+indi = 0
+n = np.arange(num_samples) - indi
 
-v = outils.vn(n)
+
 p = outils.pn(n)
+v = outils.vn(n)
+
+indf = indi + num_samples
+x = np.convolve(p, v, mode='full')[indi:indf]
 
 V = fftlib.rfft(v)
 P = fftlib.rfft(p)
-X = P * V
+X = fftlib.rfft(x)
+# X = P * V
 
 Vlog = np.log(V)
 Plog = np.log(P)
 Xlog = np.log(X)
 Xlog.imag = np.unwrap(Xlog.imag)
+
+# Xlog2 = np.log(fftlib.rfft(outils.vn(n+1)) * fftlib.rfft(outils.pn(n)))
+# Xlog.imag = Xlog2.imag
 
 v_hat = fftlib.irfft(Vlog)
 p_hat = fftlib.irfft(Plog)
@@ -75,7 +84,7 @@ for i in range(3):
 
 plt.tight_layout(0.2)
 out_folder = outils.out_folder
-plt.savefig(out_folder / 'oppenheim_fig(13.17).png', format='png')
+plt.savefig(out_folder / 'oppenheim_fig(13.17).png', format='png', dpi=600)
 plt.savefig(out_folder / 'oppenheim_fig(13.17).pdf', format='pdf')
 plt.show()
 
