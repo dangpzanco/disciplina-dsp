@@ -100,7 +100,7 @@ def unit_circle(N, r=1):
     return x, y
 
 
-def box_filter(n,N1,N2, filter_type='low'):
+def box_filter(n, N1, N2, filter_type='low'):
 
     N = n.size
     

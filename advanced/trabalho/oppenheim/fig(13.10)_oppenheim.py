@@ -29,13 +29,17 @@ ax[0].stem(n, v, 'k', **stem_options)
 ax[1].stem(n, p, 'k', **stem_options)
 ax[2].stem(n, x, 'k', **stem_options)
 
+ax[0].set_ylabel('$v[n]$', fontsize=14)
+ax[1].set_ylabel('$p[n]$', fontsize=14)
+ax[2].set_ylabel('$x[n]$', fontsize=14)
+
 ax[0].axis([-20,80,-2,4])
-ax[1].axis([-20,80,-0.5,1.5])
+ax[1].axis([-20,80,-0.4,1.2])
 ax[2].axis([-20,80,-2,4])
 
 for i in range(3):
     ax[i].set_xlabel('Sample number [$n$]')
-    ax[i].set_ylabel('Amplitude')
+    # ax[i].set_ylabel('Amplitude')
     ax[i].grid(True, which='both')
 
 plt.tight_layout(0.2)

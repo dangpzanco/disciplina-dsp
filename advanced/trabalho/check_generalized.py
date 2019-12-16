@@ -11,7 +11,8 @@ import cepstrum_utils as utils
 
 
 
-gamma = 1
+gamma = rnd.rand() - 0.5
+print(gamma)
 
 
 num_samples = 1000
@@ -19,14 +20,15 @@ P = rnd.randn(num_samples) + 1j * rnd.randn(num_samples)
 H = rnd.randn(num_samples) + 1j * rnd.randn(num_samples)
 X = P * H
 
-# Pv = P ** gamma
-# Hv = H ** gamma
+Pv = P ** gamma
+Hv = H ** gamma
 
-Pv = utils.log(P, gamma)
-Hv = utils.log(H, gamma)
+# Pv = utils.log(P, gamma)
+# Hv = utils.log(H, gamma)
 Xv = Pv * Hv
 
-X_hat = utils.exp(Xv, gamma)
+# X_hat = utils.exp(Xv, gamma)
+X_hat = Xv ** (1/gamma) 
 
 fig, ax = plt.subplots(2,1,figsize=(10,7))
 
